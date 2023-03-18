@@ -4,11 +4,11 @@ from queue import Queue
 from socket import socket
 from typing import Any
 
-from capture import AbstractCaptureStrategy
-from endoding import AbstractEncoderStrategy
 from lock import AutoLockingValue
 from packet import Packet
 from pfactory import VideoDataPacketFactory
+from .capture import AbstractCaptureStrategy
+from .encode import AbstractEncoderStrategy
 
 
 class Component(ABC):

@@ -1,7 +1,7 @@
-from capture import CaptureStrategyBuilder, AbstractCaptureStrategy
-from endoding import EncoderStrategyBuilder, AbstractEncoderStrategy
 from network import SocketFactory
-from pipeline import EncoderComponent, CaptureComponent, NetworkComponent
+from .capture import CaptureStrategyBuilder, AbstractCaptureStrategy
+from .encode import EncoderStrategyBuilder, AbstractEncoderStrategy
+from .pipeline import EncoderComponent, CaptureComponent, NetworkComponent
 
 
 class Client:
@@ -54,3 +54,6 @@ class Client:
             .set_option("height", self.height) \
             .set_option("fps", self.fps) \
             .build()
+
+    def run(self):
+        pass
