@@ -1,13 +1,13 @@
 import pygame
 from pygame import QUIT
 
+from capture import CaptureStrategyBuilder, AbstractCaptureStrategy
+from encode import EncoderStrategyBuilder, AbstractEncoderStrategy
 from lock import AutoLockingValue
 from network import SocketFactory
+from pipeline import EncoderComponent, CaptureComponent, NetworkComponent
 from pread import SocketDataReader
 from pwrite import SocketDataWriter
-from .capture import CaptureStrategyBuilder, AbstractCaptureStrategy
-from .encode import EncoderStrategyBuilder, AbstractEncoderStrategy
-from .pipeline import EncoderComponent, CaptureComponent, NetworkComponent
 
 
 class Client:
@@ -29,6 +29,8 @@ class Client:
         self._title = title
         self._width = width
         self._height = height
+        self._capture_width = 1920
+        self._capture_height = 1080
         self._fps = fps
         self._running = AutoLockingValue(False)
 
@@ -37,7 +39,6 @@ class Client:
         self._socket_writer = SocketDataWriter(self._socket)
 
         # pipeline creation
-        self._pipeline_running = False
         self._capture_component = CaptureComponent(
             self._get_default_capture_strategy()
         )
@@ -51,18 +52,18 @@ class Client:
         )
 
     def _get_default_capture_strategy(self) -> AbstractCaptureStrategy:
-        return CaptureStrategyBuilder \
+        return CaptureStrategyBuilder() \
             .set_strategy_type("mss") \
-            .set_option("widht", self._width) \
-            .set_option("height", self._height) \
+            .set_option("width", self._capture_width) \
+            .set_option("height", self._capture_height) \
             .set_option("fps", self._fps) \
             .build()
 
     def _get_default_encoder_strategy(self) -> AbstractEncoderStrategy:
-        return EncoderStrategyBuilder \
+        return EncoderStrategyBuilder() \
             .set_strategy_type("av") \
-            .set_option("width", self._width) \
-            .set_option("height", self._height) \
+            .set_option("width", self._capture_width) \
+            .set_option("height", self._capture_height) \
             .set_option("fps", self._fps) \
             .build()
 
@@ -91,7 +92,16 @@ class Client:
         pygame.quit()
 
     def stop(self):
-        self._running.set(True)
         self._capture_component.stop()
         self._encoder_component.stop()
         self._network_component.stop()
+        self._running.set(True)
+
+
+HOST = "127.0.0.1"
+PORT = 8081
+FPS = 30
+
+if __name__ == "__main__":
+    client = Client(HOST, PORT, 200, 200, FPS)
+    client.run()

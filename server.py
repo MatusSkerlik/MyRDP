@@ -1,13 +1,13 @@
 import pygame
 
+from bandwidth import BandwidthMonitor, BandwidthStateMachine
 from command import MouseMoveCommand, MouseClickCommand, KeyboardEventCommand
+from decode import AbstractDecoderStrategy, MPEGTS_H264Decoder
 from enums import MouseButton, ButtonState, ASCIIEnum
 from lock import AutoLockingValue
 from network import SocketFactory
 from pread import SocketDataReader
 from pwrite import SocketDataWriter
-from server.bandwidth import BandwidthMonitor, BandwidthStateMachine
-from server.decode import PyAvH264Decoder, AbstractDecoderStrategy
 
 
 class Server:
@@ -20,12 +20,15 @@ class Server:
         self._fps = fps
 
         self._running = AutoLockingValue(False)
-        self._socket = SocketFactory.bind(host, port)
-        self._socket_reader = SocketDataReader(self._socket)
-        self._socket_writer = SocketDataWriter(self._socket)
+        self._server_socket = SocketFactory.bind(host, port)
+        print(f"Server listening on {self._host}:{self._port}")
+        self._client_socket, self._client_ip = self._server_socket.accept()
+        print(f"Connected to client at {self._client_ip}")
+        self._socket_reader = SocketDataReader(self._client_socket)
+        self._socket_writer = SocketDataWriter(self._client_socket)
         self._monitor = BandwidthMonitor()
         self._bandwidth_state_machine = BandwidthStateMachine()
-        self._decoder_strategy = PyAvH264Decoder()
+        self._decoder_strategy = MPEGTS_H264Decoder()
 
     def set_decoding_strategy(self, decoder_strategy: AbstractDecoderStrategy):
         self._decoder_strategy = decoder_strategy
@@ -38,10 +41,6 @@ class Server:
             raise RuntimeError("The 'run' method can only be called once")
         self._running.set(True)
 
-        print(f"Server listening on {self._host}:{self._port}")
-        client_socket, client_addr = self._socket.accept()
-        print(f"Connected to client at {client_addr}")
-
         pygame.init()
         clock = pygame.time.Clock()
         screen = pygame.display.set_mode((self._width, self._height))
@@ -49,6 +48,9 @@ class Server:
         while self._running.get():
             # Receive video data
             video_data = self._socket_reader.read_packet()
+            print(video_data)
+            if not video_data:
+                continue
 
             # Update minute bandwidth statistics
             self._monitor.register_received_bytes(len(video_data))
@@ -108,5 +110,14 @@ class Server:
     def stop(self) -> None:
         if self._running.get():
             self._running.set(False)
-            self._socket.close()
+            self._server_socket.close()
             pygame.quit()
+
+
+HOST = "127.0.0.1"
+PORT = 8081
+FPS = 30
+
+if __name__ == "__main__":
+    server = Server(HOST, PORT, 1366, 720, FPS)
+    server.run()

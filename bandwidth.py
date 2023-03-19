@@ -82,7 +82,7 @@ class BandwidthCategoryMeta(EnumMeta):
                 for color_depth in (16, 32):
                     # Calculate the bandwidth with a given compression_ratio
                     compression_ratio = 0.07  # Adjust this value according to your requirements
-                    bandwidth = int(resolution._width * resolution._height * fps * color_depth * compression_ratio / 8)
+                    bandwidth = int(resolution.width * resolution.height * fps * color_depth * compression_ratio / 8)
                     unique_bandwidths.add(bandwidth)
 
         # Sort the unique bandwidths in ascending order

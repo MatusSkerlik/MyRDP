@@ -1,13 +1,12 @@
 import threading
 from abc import ABC, abstractmethod
 from queue import Queue
-from typing import Any
 
+from capture import AbstractCaptureStrategy
+from encode import AbstractEncoderStrategy
 from lock import AutoLockingValue
 from pfactory import VideoDataPacketFactory
 from pwrite import SocketDataWriter
-from .capture import AbstractCaptureStrategy
-from .encode import AbstractEncoderStrategy
 
 
 class Component(ABC):
@@ -31,6 +30,7 @@ class CaptureComponent(Component):
         self.output_queue = Queue()
         self._capture_strategy = AutoLockingValue(capture_strategy)
         self._thread = threading.Thread(target=self.run)
+        self._thread.daemon = True
         self._thread.start()
 
     def set_capture_strategy(self, capture_strategy: AbstractCaptureStrategy):
@@ -43,8 +43,8 @@ class CaptureComponent(Component):
         """
         Continuously captures screen images and puts it in the output queue.
         """
-        while True:
-            captured_data: Any = self._capture_strategy.get().capture_screen()
+        while self.is_running():
+            captured_data = self._capture_strategy.get().capture_screen()
             self.output_queue.put(captured_data)
 
     def stop(self):
@@ -59,6 +59,7 @@ class EncoderComponent(Component):
         self._input_queue = input_queue
         self._encoder_strategy = AutoLockingValue(encoder_strategy)
         self._thread = threading.Thread(target=self.run)
+        self._thread.daemon = True
         self._thread.start()
 
     def set_encoder_strategy(self, encoder_strategy: AbstractEncoderStrategy):
@@ -72,7 +73,7 @@ class EncoderComponent(Component):
         Continuously encodes data from the input queue and puts the encoded data
         in the output queue.
         """
-        while True:
+        while self.is_running():
             captured_data = self._input_queue.get()
             encoded_data = self._encoder_strategy.get().encode_frame(captured_data)
 
@@ -92,8 +93,9 @@ class NetworkComponent(Component):
         super().__init__()
         self.input_queue = input_queue
         self._running = AutoLockingValue(True)
-        self._thread = threading.Thread(target=self.run)
         self._socket_writer = socket_writer
+        self._thread = threading.Thread(target=self.run)
+        self._thread.daemon = True
         self._thread.start()
 
     def run(self) -> None:

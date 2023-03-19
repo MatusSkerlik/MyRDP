@@ -1,11 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Any, Dict
 
-import cv2
 import numpy as np
 from mss import mss
 
-from client.timer import FrameTimer
+from timer import FrameTimer
 
 
 class AbstractCaptureStrategy(ABC):
@@ -48,10 +47,10 @@ class MSSCaptureStrategy(AbstractCaptureStrategy):
         img_np = np.array(sct_img)
 
         # Resize the image
-        resized_img = cv2.resize(img_np, (self.width, self.height))
+        # resized_img = cv2.resize(img_np, (self.width, self.height))
 
         # Convert the resized image to a bytearray and return
-        return bytearray(resized_img)
+        return img_np
 
 
 class CaptureStrategyBuilder:
@@ -88,7 +87,8 @@ class CaptureStrategyBuilder:
         if self._strategy_type.lower() == "mss":
             width = self._options.get("width", 640)
             height = self._options.get("height", 480)
-            return MSSCaptureStrategy(width, height)
+            fps = self._options.get("fps", 30)
+            return MSSCaptureStrategy(width, height, fps)
 
         # Add other strategy types here
         return None

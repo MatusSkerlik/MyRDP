@@ -85,6 +85,5 @@ class VideoDataPacketFactory(AbstractPacketFactory):
         """
         packet = Packet()
         packet.add_byte(PacketType.VIDEO_DATA)
-        packet.add_int(len(frame_data))
         packet.add_bytes(frame_data)
         return packet

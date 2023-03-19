@@ -1,21 +1,22 @@
-from threading import Thread
+import multiprocessing
+import subprocess
+import sys
 
-from client import Client
-from server import Server
 
-HOST = "127.0.0.1"
-PORT = 8080
-FPS = 30
+def start_server():
+    subprocess.run([sys.executable, "server.py"])
+
+
+def start_client():
+    subprocess.run([sys.executable, "client.py"])
+
 
 if __name__ == "__main__":
-    server = Server(HOST, PORT, 1366, 720, FPS)
-    client = Client(HOST, PORT, 200, 200, FPS)
+    server_process = multiprocessing.Process(target=start_server)
+    client_process = multiprocessing.Process(target=start_client)
 
-    thread_server = Thread(target=server.run)
-    thread_client = Thread(target=client.run)
+    server_process.start()
+    client_process.start()
 
-    thread_server.start()
-    thread_client.start()
-
-    thread_server.join()
-    thread_client.join()
+    server_process.join()
+    client_process.join()
