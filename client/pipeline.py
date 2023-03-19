@@ -1,12 +1,11 @@
 import threading
 from abc import ABC, abstractmethod
 from queue import Queue
-from socket import socket
 from typing import Any
 
 from lock import AutoLockingValue
-from packet import Packet
 from pfactory import VideoDataPacketFactory
+from pwrite import SocketDataWriter
 from .capture import AbstractCaptureStrategy
 from .encode import AbstractEncoderStrategy
 
@@ -74,8 +73,8 @@ class EncoderComponent(Component):
         in the output queue.
         """
         while True:
-            captured_data: Any = self._input_queue.get()
-            encoded_data: Any = self._encoder_strategy.get().encode_frame(captured_data)
+            captured_data = self._input_queue.get()
+            encoded_data = self._encoder_strategy.get().encode_frame(captured_data)
 
             # If encoded_data is available, it means the encoding strategy has
             # enough data to produce an encoded frame. If not, it will wait
@@ -89,12 +88,12 @@ class EncoderComponent(Component):
 
 
 class NetworkComponent(Component):
-    def __init__(self, input_queue: Queue, tcp_socket: socket):
+    def __init__(self, input_queue: Queue, socket_writer: SocketDataWriter):
         super().__init__()
         self.input_queue = input_queue
         self._running = AutoLockingValue(True)
         self._thread = threading.Thread(target=self.run)
-        self._socket = tcp_socket
+        self._socket_writer = socket_writer
         self._thread.start()
 
     def run(self) -> None:
@@ -102,9 +101,9 @@ class NetworkComponent(Component):
         Continuously sends encoded data from the input queue through the network.
         """
         while self.is_running():
-            encoded_data: Any = self.input_queue.get()
-            packet: Packet = VideoDataPacketFactory.create_packet(encoded_data)
-            self._socket.sendall(packet.get_bytes())
+            encoded_data = self.input_queue.get()
+            packet = VideoDataPacketFactory.create_packet(encoded_data)
+            self._socket_writer.write_packet(packet)
 
     def stop(self):
         super().stop()

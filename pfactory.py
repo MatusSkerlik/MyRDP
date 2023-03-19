@@ -1,7 +1,7 @@
 from abc import abstractmethod, ABC
 
+from enums import PacketType, ASCIIEnum, ButtonState, MouseButton
 from packet import Packet
-from enums import PacketType, ASCIIEnum, ButtonState
 
 
 class AbstractPacketFactory(ABC):
@@ -15,10 +15,10 @@ class AbstractPacketFactory(ABC):
         pass
 
 
-class MouseClickAbstractPacketFactory(AbstractPacketFactory):
+class MouseClickPacketFactory(AbstractPacketFactory):
 
     @staticmethod
-    def create_packet(button, state, x, y) -> Packet:
+    def create_packet(x: int, y: int, button: MouseButton, state: ButtonState) -> Packet:
         """
         Create a mouse click packet.
 
@@ -40,7 +40,7 @@ class MouseClickAbstractPacketFactory(AbstractPacketFactory):
 class MouseMovePacketFactory(AbstractPacketFactory):
 
     @staticmethod
-    def create_packet(x, y) -> Packet:
+    def create_packet(x: int, y: int) -> Packet:
         """
         Create a mouse move packet.
 
@@ -55,24 +55,7 @@ class MouseMovePacketFactory(AbstractPacketFactory):
         return packet
 
 
-class VideoDataPacketFactory(AbstractPacketFactory):
-
-    @staticmethod
-    def create_packet(frame_data) -> Packet:
-        """
-        Create a video data packet.
-
-        Args:
-            frame_data: The raw video data (compressed or encoded) as bytes.
-        """
-        packet = Packet()
-        packet.add_byte(PacketType.VIDEO_DATA)
-        packet.add_int(len(frame_data))
-        packet.add_bytes(frame_data)
-        return packet
-
-
-class KeyboardEventAbstractPacketFactory(AbstractPacketFactory):
+class KeyboardEventPacketFactory(AbstractPacketFactory):
 
     @staticmethod
     def create_packet(key_code: ASCIIEnum, state: ButtonState) -> Packet:
@@ -87,4 +70,21 @@ class KeyboardEventAbstractPacketFactory(AbstractPacketFactory):
         packet.add_byte(PacketType.KEYBOARD_EVENT)
         packet.add_int(key_code)
         packet.add_byte(state)
+        return packet
+
+
+class VideoDataPacketFactory(AbstractPacketFactory):
+
+    @staticmethod
+    def create_packet(frame_data: bytes) -> Packet:
+        """
+        Create a video data packet.
+
+        Args:
+            frame_data: The raw video data (compressed or encoded) as bytes.
+        """
+        packet = Packet()
+        packet.add_byte(PacketType.VIDEO_DATA)
+        packet.add_int(len(frame_data))
+        packet.add_bytes(frame_data)
         return packet

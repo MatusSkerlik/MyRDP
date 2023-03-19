@@ -1,9 +1,11 @@
 import pygame
-from pygame import QUIT
 
+from command import MouseMoveCommand, MouseClickCommand, KeyboardEventCommand
+from enums import MouseButton, ButtonState, ASCIIEnum
 from lock import AutoLockingValue
 from network import SocketFactory
 from pread import SocketDataReader
+from pwrite import SocketDataWriter
 from server.bandwidth import BandwidthMonitor, BandwidthStateMachine
 from server.decode import PyAvH264Decoder, AbstractDecoderStrategy
 
@@ -20,6 +22,7 @@ class Server:
         self._running = AutoLockingValue(False)
         self._socket = SocketFactory.bind(host, port)
         self._socket_reader = SocketDataReader(self._socket)
+        self._socket_writer = SocketDataWriter(self._socket)
         self._monitor = BandwidthMonitor()
         self._bandwidth_state_machine = BandwidthStateMachine()
         self._decoder_strategy = PyAvH264Decoder()
@@ -79,8 +82,26 @@ class Server:
 
             # Handle events
             for event in pygame.event.get():
-                if event.type == QUIT:
-                    self._running.set(False)
+                if event.type == pygame.MOUSEMOTION:
+                    x, y = event.pos
+                    cmd = MouseMoveCommand(self._socket_writer)
+                    cmd.execute(x, y)
+
+                elif event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.MOUSEBUTTONUP:
+                    x, y = event.pos
+                    button = MouseButton(event.button)
+                    state = ButtonState.PRESSED if event.type == pygame.MOUSEBUTTONDOWN else ButtonState.RELEASED
+                    cmd = MouseClickCommand(self._socket_writer)
+                    cmd.execute(x, y, button, state)
+
+                elif event.type == pygame.KEYDOWN or event.type == pygame.KEYUP:
+                    key_code = ASCIIEnum(event.key)
+                    state = ButtonState.PRESSED if event.type == pygame.KEYDOWN else ButtonState.RELEASED
+                    cmd = KeyboardEventCommand(self._socket_writer)
+                    cmd.execute(key_code, state)
+
+                elif event.type == pygame.QUIT:
+                    self.stop()
 
             clock.tick(self._fps)
 

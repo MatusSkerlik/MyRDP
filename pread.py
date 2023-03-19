@@ -3,6 +3,7 @@ from io import BytesIO
 
 from enums import PacketType
 from error import UnexpectedPacketTypeError
+from packet import Packet
 
 
 class SocketDataReader:
@@ -38,7 +39,7 @@ class SocketDataReader:
         while self.buffer.tell() < size:
             self._fill_buffer()
 
-    def read_packet(self):
+    def read_packet(self) -> Packet:
         """
         Reads a packet from the buffer and returns its content.
         Handles different packet types and raises an UnexpectedPacketTypeError

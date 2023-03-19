@@ -3,6 +3,8 @@ from pygame import QUIT
 
 from lock import AutoLockingValue
 from network import SocketFactory
+from pread import SocketDataReader
+from pwrite import SocketDataWriter
 from .capture import CaptureStrategyBuilder, AbstractCaptureStrategy
 from .encode import EncoderStrategyBuilder, AbstractEncoderStrategy
 from .pipeline import EncoderComponent, CaptureComponent, NetworkComponent
@@ -31,6 +33,8 @@ class Client:
         self._running = AutoLockingValue(False)
 
         self._socket = SocketFactory.connect(host, port)
+        self._socket_reader = SocketDataReader(self._socket)
+        self._socket_writer = SocketDataWriter(self._socket)
 
         # pipeline creation
         self._pipeline_running = False
@@ -43,7 +47,7 @@ class Client:
         )
         self._network_component = NetworkComponent(
             self._encoder_component.output_queue,  # join queues between
-            self._socket
+            self._socket_writer
         )
 
     def _get_default_capture_strategy(self) -> AbstractCaptureStrategy:
