@@ -11,23 +11,29 @@ class AbstractEncoderStrategy(ABC):
 
 
 class PyAvH264Encoder(AbstractEncoderStrategy):
-    def __init__(self, width: int, height: int) -> None:
+    def __init__(self, width: int, height: int, fps: int) -> None:
         self.width = width
         self.height = height
+
+        self.pix_fmt = "yuv420p"
         self.codec_name = "libx264"
         self.container_format = "mp4"
-        self.output_frame_rate = 30
-        self.pix_fmt = "yuv420p"
+        self.output_frame_rate = fps
 
         self.stream = av.open(None, "w", format=self.container_format)
         self.video_stream = self.stream.add_stream(self.codec_name, self.output_frame_rate)
-        self.video_stream.width = self.width
-        self.video_stream.height = self.height
+        self.video_stream._width = self.width
+        self.video_stream._height = self.height
         self.video_stream.pix_fmt = self.pix_fmt
 
     def encode_frame(self, frame_data) -> bytes:
         frame = av.VideoFrame.from_ndarray(frame_data, format=self.pix_fmt)
-        return self.video_stream.encode(frame)
+        packets = []
+
+        for packet in self.video_stream.encode(frame):
+            packets.append(packet.to_bytes())
+
+        return b''.join(packets)
 
 
 class EncoderStrategyBuilder:

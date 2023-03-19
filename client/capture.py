@@ -5,6 +5,8 @@ import cv2
 import numpy as np
 from mss import mss
 
+from client.timer import FrameTimer
+
 
 class AbstractCaptureStrategy(ABC):
     @abstractmethod
@@ -23,12 +25,19 @@ class MSSCaptureStrategy(AbstractCaptureStrategy):
         sct (mss.mss): The MSS object used for screen capturing.
     """
 
-    def __init__(self, width: int, height: int):
+    def __init__(self, width: int, height: int, fps: int):
         self.width = width
         self.height = height
+
+        self.fps = fps
+        self.frame_timer = FrameTimer(fps)
+
         self.sct = mss()
 
     def capture_screen(self) -> bytes:
+        # sleep for the required time to match fps
+        self.frame_timer.tick()
+
         # Get the dimensions of the first monitor
         monitor = self.sct.monitors[1]
 
