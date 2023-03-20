@@ -12,6 +12,14 @@ class AbstractCaptureStrategy(ABC):
     def capture_screen(self) -> bytes:
         pass
 
+    @abstractmethod
+    def get_monitor_width(self) -> int:
+        pass
+
+    @abstractmethod
+    def get_monitor_height(self) -> int:
+        pass
+
 
 class MSSCaptureStrategy(AbstractCaptureStrategy):
     """
@@ -24,14 +32,17 @@ class MSSCaptureStrategy(AbstractCaptureStrategy):
         sct (mss.mss): The MSS object used for screen capturing.
     """
 
-    def __init__(self, width: int, height: int, fps: int):
-        self.width = width
-        self.height = height
-
+    def __init__(self, fps: int):
         self.fps = fps
         self.frame_timer = FrameTimer(fps)
 
         self.sct = mss()
+
+    def get_monitor_width(self) -> int:
+        return self.sct.monitors[1].get("width")
+
+    def get_monitor_height(self) -> int:
+        return self.sct.monitors[1].get("height")
 
     def capture_screen(self) -> bytes:
         # sleep for the required time to match fps
@@ -85,10 +96,8 @@ class CaptureStrategyBuilder:
             return None
 
         if self._strategy_type.lower() == "mss":
-            width = self._options.get("width", 640)
-            height = self._options.get("height", 480)
             fps = self._options.get("fps", 30)
-            return MSSCaptureStrategy(width, height, fps)
+            return MSSCaptureStrategy(fps)
 
         # Add other strategy types here
         return None

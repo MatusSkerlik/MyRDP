@@ -29,8 +29,7 @@ class Client:
         self._title = title
         self._width = width
         self._height = height
-        self._capture_width = 1920
-        self._capture_height = 1080
+
         self._fps = fps
         self._running = AutoLockingValue(False)
 
@@ -39,9 +38,13 @@ class Client:
         self._socket_writer = SocketDataWriter(self._socket)
 
         # pipeline creation
+        capture_strategy = self._get_default_capture_strategy()
         self._capture_component = CaptureComponent(
-            self._get_default_capture_strategy()
+            capture_strategy
         )
+        self._capture_width = capture_strategy.get_monitor_width()
+        self._capture_height = capture_strategy.get_monitor_height()
+
         self._encoder_component = EncoderComponent(
             self._capture_component.output_queue,  # join queues between
             self._get_default_encoder_strategy()
@@ -54,8 +57,6 @@ class Client:
     def _get_default_capture_strategy(self) -> AbstractCaptureStrategy:
         return CaptureStrategyBuilder() \
             .set_strategy_type("mss") \
-            .set_option("width", self._capture_width) \
-            .set_option("height", self._capture_height) \
             .set_option("fps", self._fps) \
             .build()
 

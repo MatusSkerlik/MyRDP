@@ -48,7 +48,6 @@ class Server:
         while self._running.get():
             # Receive video data
             video_data = self._socket_reader.read_packet()
-            print(video_data)
             if not video_data:
                 continue
 

@@ -1,3 +1,4 @@
+import io
 from abc import ABC, abstractmethod
 from typing import Optional, Any, Dict
 
@@ -20,21 +21,23 @@ class MPEGTS_H264Encoder(AbstractEncoderStrategy):
         self._pix_fmt = "yuv420p"
         self._output_frame_rate = fps
 
-        self._stream = av.open("tmp.mpegts", mode="w", format=self._container_format)
-        self._video_stream = self._stream.add_stream(self._codec_name, self._output_frame_rate)
+        self._buffer = io.BytesIO()
+        self._container = av.open(self._buffer, mode="w", format=self._container_format)
+        self._video_stream = self._container.add_stream(self._codec_name, self._output_frame_rate)
         self._video_stream.width = self._width
         self._video_stream.height = self._height
         self._video_stream.pix_fmt = self._pix_fmt
 
     def encode_frame(self, frame_data) -> bytes:
-        print(self._video_stream)
         frame = av.VideoFrame.from_ndarray(frame_data, format="rgba")
-        packets = []
-
         for packet in self._video_stream.encode(frame):
-            packets.append(packet.to_bytes())
+            self._container.mux(packet)
 
-        return b''.join(packets)
+        data = self._buffer.getvalue()
+        self._buffer.seek(0)
+        self._buffer.truncate()
+
+        return data
 
 
 class EncoderStrategyBuilder:
