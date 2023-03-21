@@ -99,11 +99,11 @@ class BandwidthFormatter:
         if bandwidth < 1000:
             return f"{bandwidth} Bps"
         elif bandwidth < 1000 * 1000:
-            return f"{bandwidth / 1000:.2f} Kbps"
+            return f"{bandwidth / 1000:.0f} Kbps"
         elif bandwidth < 1000 * 1000 * 1000:
-            return f"{bandwidth / (1000 * 1000):.2f} Mbps"
+            return f"{bandwidth / (1000 * 1000):.0f} Mbps"
         else:
-            return f"{bandwidth / (1000 * 1000 * 1000):.2f} Gbps"
+            return f"{bandwidth / (1000 * 1000 * 1000):.0f} Gbps"
 
 
 class BandwidthCategory(Enum, metaclass=BandwidthCategoryMeta):

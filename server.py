@@ -129,11 +129,11 @@ class Server:
 
             clock.tick(self._fps)
 
+        pygame.quit()
+
     def stop(self) -> None:
-        if self._running.get():
-            self._running.set(False)
-            self._server_socket.close()
-            pygame.quit()
+        self._server_socket.close()
+        self._running.set(False)
 
 
 HOST = "127.0.0.1"
