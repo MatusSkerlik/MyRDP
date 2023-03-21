@@ -1,6 +1,8 @@
+import zlib
 from abc import ABC, abstractmethod
 from typing import Optional, Any, Dict, Union
 
+import cv2
 import numpy as np
 
 
@@ -15,11 +17,23 @@ class DefaultEncoder(AbstractEncoderStrategy):
         self._fps = fps
 
         self._last_frame: Union[None, np.ndarray] = None
+        self._frame_count = 0
 
     def encode_frame(self, width: int, height: int, frame: bytes) -> bytes:
         nframe = np.frombuffer(frame, dtype=np.uint8)
         nframe.reshape((width, height, 3))
-        return nframe.tobytes()
+
+        self._last_frame = nframe
+        if self._frame_count % self._fps == 0:
+            self._frame_count = 1
+            return zlib.compress(nframe.tobytes())
+        else:
+            self._frame_count += 1
+            diff = cv2.absdiff(self._last_frame, nframe)
+            mask = cv2.cvtColor(diff, cv2.COLOR_RGB2GRAY)
+            _, mask = cv2.threshold(mask, 30, 255, cv2.THRESH_BINARY)
+            diff_data = cv2.bitwise_and(frame, frame, mask=mask)
+            return zlib.compress(diff_data.tobytes())
 
 
 class EncoderStrategyBuilder:

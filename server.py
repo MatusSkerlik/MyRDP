@@ -67,7 +67,7 @@ class Server:
                 self._bandwidth_state_machine.update_state(self._monitor.get_bandwidth())
 
                 # Handle received data and render frames
-                frames = self._decoder_strategy.decode_packet(data)
+                frames = self._decoder_strategy.decode_packet(width, height, data)
 
                 # Render only last frame
                 frame = frames[-1]
