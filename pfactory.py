@@ -1,6 +1,6 @@
-from abc import abstractmethod, ABC
+from abc import ABC, abstractmethod
 
-from enums import PacketType, ASCIIEnum, ButtonState, MouseButton
+from enums import PacketType, MouseButton, ButtonState, ASCIIEnum
 from packet import Packet
 
 
@@ -76,14 +76,18 @@ class KeyboardEventPacketFactory(AbstractPacketFactory):
 class VideoDataPacketFactory(AbstractPacketFactory):
 
     @staticmethod
-    def create_packet(frame_data: bytes) -> Packet:
+    def create_packet(width: int, height: int, data: bytes) -> Packet:
         """
         Create a video data packet.
 
         Args:
-            frame_data: The raw video data (compressed or encoded) as bytes.
+            width: The width of video frame/s encoded in data
+            height: The height of video frame/s encoded in data
+            data: The raw video data (compressed or encoded) as bytes.
         """
         packet = Packet()
         packet.add_byte(PacketType.VIDEO_DATA)
-        packet.add_bytes(frame_data)
+        packet.add_int(width)
+        packet.add_int(height)
+        packet.add_bytes(data)
         return packet

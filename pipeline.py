@@ -3,9 +3,9 @@ from abc import ABC, abstractmethod
 from queue import Queue
 
 from capture import AbstractCaptureStrategy
+from dao import VideoDataPacketFactory
 from encode import AbstractEncoderStrategy
 from lock import AutoLockingValue
-from pfactory import VideoDataPacketFactory
 from pwrite import SocketDataWriter
 
 
@@ -47,14 +47,16 @@ class CaptureComponent(Component):
             captured_data = self._capture_strategy.get().capture_screen()
             self.output_queue.put(captured_data)
 
-    def stop(self):
-        super().stop()
+    def join(self):
         self._thread.join()
 
 
 class EncoderComponent(Component):
-    def __init__(self, input_queue: Queue, encoder_strategy: AbstractEncoderStrategy) -> None:
+    def __init__(self, width: int, height: int, input_queue: Queue, encoder_strategy: AbstractEncoderStrategy) -> None:
         super().__init__()
+        self._width = width
+        self._height = height
+
         self.output_queue = Queue()
         self._input_queue = input_queue
         self._encoder_strategy = AutoLockingValue(encoder_strategy)
@@ -75,7 +77,7 @@ class EncoderComponent(Component):
         """
         while self.is_running():
             captured_data = self._input_queue.get()
-            encoded_data = self._encoder_strategy.get().encode_frame(captured_data)
+            encoded_data = self._encoder_strategy.get().encode_frame(self._width, self._height, captured_data)
 
             # If encoded_data is available, it means the encoding strategy has
             # enough data to produce an encoded frame. If not, it will wait
@@ -83,15 +85,17 @@ class EncoderComponent(Component):
             if encoded_data:
                 self.output_queue.put(encoded_data)
 
-    def stop(self):
-        super().stop()
+    def join(self):
         self._thread.join()
 
 
 class NetworkComponent(Component):
-    def __init__(self, input_queue: Queue, socket_writer: SocketDataWriter):
+    def __init__(self, width: int, height: int, input_queue: Queue, socket_writer: SocketDataWriter):
         super().__init__()
-        self.input_queue = input_queue
+        self._width = width
+        self._height = height
+
+        self._input_queue = input_queue
         self._running = AutoLockingValue(True)
         self._socket_writer = socket_writer
         self._thread = threading.Thread(target=self.run)
@@ -103,10 +107,9 @@ class NetworkComponent(Component):
         Continuously sends encoded data from the input queue through the network.
         """
         while self.is_running():
-            encoded_data = self.input_queue.get()
-            packet = VideoDataPacketFactory.create_packet(encoded_data)
+            encoded_data = self._input_queue.get()
+            packet = VideoDataPacketFactory.create_packet(self._width, self._height, encoded_data)
             self._socket_writer.write_packet(packet)
 
-    def stop(self):
-        super().stop()
+    def join(self):
         self._thread.join()

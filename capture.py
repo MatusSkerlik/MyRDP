@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Any, Dict
 
-import numpy as np
 from mss import mss
 
 from timer import FrameTimer
@@ -52,16 +51,10 @@ class MSSCaptureStrategy(AbstractCaptureStrategy):
         monitor = self.sct.monitors[1]
 
         # Capture the screen
-        sct_img = self.sct.grab(monitor)
+        screen_shot = self.sct.grab(monitor)
 
-        # Convert the captured image to a numpy array
-        img_np = np.array(sct_img)
-
-        # Resize the image
-        # resized_img = cv2.resize(img_np, (self.width, self.height))
-
-        # Convert the resized image to a bytearray and return
-        return img_np
+        # Convert the resized image to a bytes and return
+        return screen_shot.rgb
 
 
 class CaptureStrategyBuilder:

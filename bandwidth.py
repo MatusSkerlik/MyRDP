@@ -93,6 +93,19 @@ class BandwidthCategoryMeta(EnumMeta):
         return super().__new__(mcs, cls, bases, dct)
 
 
+class BandwidthFormatter:
+    @staticmethod
+    def format(bandwidth: int):
+        if bandwidth < 1000:
+            return f"{bandwidth} Bps"
+        elif bandwidth < 1000 * 1000:
+            return f"{bandwidth / 1000:.2f} Kbps"
+        elif bandwidth < 1000 * 1000 * 1000:
+            return f"{bandwidth / (1000 * 1000):.2f} Mbps"
+        else:
+            return f"{bandwidth / (1000 * 1000 * 1000):.2f} Gbps"
+
+
 class BandwidthCategory(Enum, metaclass=BandwidthCategoryMeta):
     """
     An enumeration representing bandwidth categories based on video characteristics.
@@ -103,15 +116,7 @@ class BandwidthCategory(Enum, metaclass=BandwidthCategoryMeta):
     """
 
     def to_human_readable(self):
-        bandwidth = self.value
-        if bandwidth < 1000:
-            return f"{bandwidth} Bps"
-        elif bandwidth < 1000 * 1000:
-            return f"{bandwidth / 1000:.2f} Kbps"
-        elif bandwidth < 1000 * 1000 * 1000:
-            return f"{bandwidth / (1000 * 1000):.2f} Mbps"
-        else:
-            return f"{bandwidth / (1000 * 1000 * 1000):.2f} Gbps"
+        return BandwidthFormatter.format(self.value)
 
 
 class BandwidthStateMachine:

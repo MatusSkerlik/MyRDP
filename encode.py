@@ -1,43 +1,25 @@
-import io
 from abc import ABC, abstractmethod
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, Union
 
-import av
+import numpy as np
 
 
 class AbstractEncoderStrategy(ABC):
     @abstractmethod
-    def encode_frame(self, frame):
+    def encode_frame(self, width: int, height: int, frame: bytes):
         pass
 
 
-class MPEGTS_H264Encoder(AbstractEncoderStrategy):
-    def __init__(self, width: int, height: int, fps: int) -> None:
-        self._width = width
-        self._height = height
+class DefaultEncoder(AbstractEncoderStrategy):
+    def __init__(self, fps: int) -> None:
+        self._fps = fps
 
-        self._codec_name = "libx264"
-        self._container_format = "mpegts"
-        self._pix_fmt = "yuv420p"
-        self._output_frame_rate = fps
+        self._last_frame: Union[None, np.ndarray] = None
 
-        self._buffer = io.BytesIO()
-        self._container = av.open(self._buffer, mode="w", format=self._container_format)
-        self._video_stream = self._container.add_stream(self._codec_name, self._output_frame_rate)
-        self._video_stream.width = self._width
-        self._video_stream.height = self._height
-        self._video_stream.pix_fmt = self._pix_fmt
-
-    def encode_frame(self, frame_data) -> bytes:
-        frame = av.VideoFrame.from_ndarray(frame_data, format="rgba")
-        for packet in self._video_stream.encode(frame):
-            self._container.mux(packet)
-
-        data = self._buffer.getvalue()
-        self._buffer.seek(0)
-        self._buffer.truncate()
-
-        return data
+    def encode_frame(self, width: int, height: int, frame: bytes) -> bytes:
+        nframe = np.frombuffer(frame, dtype=np.uint8)
+        nframe.reshape((width, height, 3))
+        return nframe.tobytes()
 
 
 class EncoderStrategyBuilder:
@@ -71,11 +53,9 @@ class EncoderStrategyBuilder:
         if not self._strategy_type:
             return None
 
-        if self._strategy_type.lower() == "av":
-            width = self._options.get("width", 640)
-            height = self._options.get("height", 480)
+        if self._strategy_type.lower() == "default":
             fps = self._options.get("fps", 30)
-            return MPEGTS_H264Encoder(width, height, fps)
+            return DefaultEncoder(fps)
 
         # Add other strategy types here
         return None

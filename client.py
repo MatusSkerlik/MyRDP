@@ -4,10 +4,10 @@ from pygame import QUIT
 from capture import CaptureStrategyBuilder, AbstractCaptureStrategy
 from encode import EncoderStrategyBuilder, AbstractEncoderStrategy
 from lock import AutoLockingValue
-from network import SocketFactory
 from pipeline import EncoderComponent, CaptureComponent, NetworkComponent
 from pread import SocketDataReader
 from pwrite import SocketDataWriter
+from sfactory import SocketFactory
 
 
 class Client:
@@ -46,10 +46,14 @@ class Client:
         self._capture_height = capture_strategy.get_monitor_height()
 
         self._encoder_component = EncoderComponent(
+            self._capture_width,
+            self._capture_height,
             self._capture_component.output_queue,  # join queues between
             self._get_default_encoder_strategy()
         )
         self._network_component = NetworkComponent(
+            self._capture_width,
+            self._capture_height,
             self._encoder_component.output_queue,  # join queues between
             self._socket_writer
         )
@@ -62,9 +66,7 @@ class Client:
 
     def _get_default_encoder_strategy(self) -> AbstractEncoderStrategy:
         return EncoderStrategyBuilder() \
-            .set_strategy_type("av") \
-            .set_option("width", self._capture_width) \
-            .set_option("height", self._capture_height) \
+            .set_strategy_type("default") \
             .set_option("fps", self._fps) \
             .build()
 
@@ -84,7 +86,7 @@ class Client:
         while self._running.get():
             for event in pygame.event.get():
                 if event.type == QUIT:
-                    self._running.set(False)
+                    self.stop()
 
             screen.fill((0, 0, 0))
             pygame.display.flip()
@@ -92,15 +94,20 @@ class Client:
 
         pygame.quit()
 
+        self._network_component.join()
+        self._encoder_component.join()
+        self._capture_component.join()
+
     def stop(self):
-        self._capture_component.stop()
-        self._encoder_component.stop()
         self._network_component.stop()
-        self._running.set(True)
+        self._encoder_component.stop()
+        self._capture_component.stop()
+        self._socket.close()
+        self._running.set(False)
 
 
 HOST = "127.0.0.1"
-PORT = 8081
+PORT = 8080
 FPS = 30
 
 if __name__ == "__main__":

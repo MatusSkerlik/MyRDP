@@ -1,7 +1,9 @@
 import io
 import socket
+import struct
 from io import BytesIO
 
+from dao import VideoData, AbstractDataObject
 from enums import PacketType
 from error import UnexpectedPacketTypeError
 
@@ -53,7 +55,34 @@ class SocketDataReader:
         while self._buffer.getbuffer().nbytes < size:
             self._fill_buffer()
 
-    def read_packet(self) -> bytes:
+    def read_int(self) -> int:
+        """Read an integer from the buffer in big-endian format."""
+        self._ensure_data(4)
+        return struct.unpack('>I', self._buffer.read(4))[0]
+
+    def read_string(self) -> str:
+        """Read a string from the buffer by first reading its length, then reading the UTF-8 encoded string."""
+        length = self.read_int()
+        self._ensure_data(length)
+        encoded_value = self._buffer.read(length)
+        return encoded_value.decode('utf-8')
+
+    def read_byte(self) -> int:
+        """Read a byte from the buffer."""
+        self._ensure_data(1)
+        return struct.unpack('B', self._buffer.read(1))[0]
+
+    def read_boolean(self) -> bool:
+        """Read a boolean value from the buffer as a single byte (1 for True, 0 for False)."""
+        return self.read_byte() == 1
+
+    def read_bytes(self) -> bytes:
+        """Read raw bytes from the buffer, prefixed with the length of the bytes as an integer."""
+        length = self.read_int()
+        self._ensure_data(length)
+        return self._buffer.read(length)
+
+    def read_packet(self) -> AbstractDataObject:
         """
         Reads a packet from the buffer and returns its content.
         Handles different packet types and raises an UnexpectedPacketTypeError
@@ -63,17 +92,14 @@ class SocketDataReader:
             video_data (bytes): The video data contained in the packet.
         """
         try:
-            self._ensure_data(1)  # Packet type is 1 byte
-            packet_type = PacketType(self._buffer.read(1)[0])
+            packet_type = PacketType(self.read_byte())
 
             if packet_type == PacketType.VIDEO_DATA:
-                self._ensure_data(4)  # Size of video data length is 4 bytes
-                video_data_length = int.from_bytes(self._buffer.read(4), "big")
 
-                self._ensure_data(video_data_length)
-                video_data = self._buffer.read(video_data_length)
-
-                return video_data
+                width = self.read_int()
+                height = self.read_int()
+                data = self.read_bytes()
+                return VideoData(width, height, data)
             else:
                 raise UnexpectedPacketTypeError(packet_type)
         finally:
