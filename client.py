@@ -1,10 +1,8 @@
 import pygame
 from pygame import QUIT
 
-from capture import CaptureStrategyBuilder, AbstractCaptureStrategy
-from encode import EncoderStrategyBuilder, AbstractEncoderStrategy
 from lock import AutoLockingValue
-from pipeline import EncoderComponent, CaptureComponent, NetworkComponent
+from pipeline import EncoderComponent, CaptureComponent, NetworkComponent, CaptureEncodeNetworkPipeline
 from pread import SocketDataReader
 from pwrite import SocketDataWriter
 from sfactory import SocketFactory
@@ -36,39 +34,7 @@ class Client:
         self._socket = SocketFactory.connect(host, port)
         self._socket_reader = SocketDataReader(self._socket)
         self._socket_writer = SocketDataWriter(self._socket)
-
-        # pipeline creation
-        capture_strategy = self._get_default_capture_strategy()
-        self._capture_component = CaptureComponent(
-            capture_strategy
-        )
-        self._capture_width = capture_strategy.get_monitor_width()
-        self._capture_height = capture_strategy.get_monitor_height()
-
-        self._encoder_component = EncoderComponent(
-            self._capture_width,
-            self._capture_height,
-            self._capture_component.output_queue,  # join queues between
-            self._get_default_encoder_strategy()
-        )
-        self._network_component = NetworkComponent(
-            self._capture_width,
-            self._capture_height,
-            self._encoder_component.output_queue,  # join queues between
-            self._socket_writer
-        )
-
-    def _get_default_capture_strategy(self) -> AbstractCaptureStrategy:
-        return CaptureStrategyBuilder() \
-            .set_strategy_type("mss") \
-            .set_option("fps", self._fps) \
-            .build()
-
-    def _get_default_encoder_strategy(self) -> AbstractEncoderStrategy:
-        return EncoderStrategyBuilder() \
-            .set_strategy_type("default") \
-            .set_option("fps", self._fps) \
-            .build()
+        self._pipeline = CaptureEncodeNetworkPipeline(self._socket_writer, fps)
 
     def is_running(self):
         return self._running.get()
@@ -77,6 +43,7 @@ class Client:
         if self._running.get():
             raise RuntimeError("The 'run' method can only be called once")
         self._running.set(True)
+        self._pipeline.start()
 
         pygame.init()
         screen = pygame.display.set_mode((self._width, self._height))
@@ -94,14 +61,8 @@ class Client:
 
         pygame.quit()
 
-        self._network_component.join()
-        self._encoder_component.join()
-        self._capture_component.join()
-
     def stop(self):
-        self._network_component.stop()
-        self._encoder_component.stop()
-        self._capture_component.stop()
+        self._pipeline.stop()
         self._socket.close()
         self._running.set(False)
 

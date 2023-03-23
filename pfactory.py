@@ -73,12 +73,12 @@ class KeyboardEventPacketFactory(AbstractPacketFactory):
         return packet
 
 
-class VideoDataPacketFactory(AbstractPacketFactory):
+class VideoContainerDataPacketFactory(AbstractPacketFactory):
 
     @staticmethod
     def create_packet(width: int, height: int, data: bytes) -> Packet:
         """
-        Create a video data packet.
+        Create a video container packet.
 
         Args:
             width: The width of video frame/s encoded in data
@@ -89,5 +89,23 @@ class VideoDataPacketFactory(AbstractPacketFactory):
         packet.add_byte(PacketType.VIDEO_DATA)
         packet.add_int(width)
         packet.add_int(height)
+        packet.add_bytes(data)
+        return packet
+
+
+class VideoFrameDataPacketFactory(AbstractPacketFactory):
+
+    @staticmethod
+    def create_packet(encoder_type: int, frame_type: int, data: bytes) -> Packet:
+        """
+        Create a video frame packet.
+        Args:
+            encoder_type: type of encoder which created this packet
+            frame_type: type of frame which is encoded in this frame
+            data: actual encoded data of frame
+        """
+        packet = Packet()
+        packet.add_int(encoder_type)
+        packet.add_int(frame_type)
         packet.add_bytes(data)
         return packet

@@ -1,10 +1,11 @@
 import threading
 from abc import ABC, abstractmethod
 from queue import Queue
+from typing import Union, List
 
-from capture import AbstractCaptureStrategy
-from dao import VideoDataPacketFactory
-from encode import AbstractEncoderStrategy
+from capture import AbstractCaptureStrategy, CaptureStrategyBuilder
+from dao import VideoContainerDataPacketFactory
+from encode import AbstractEncoderStrategy, EncoderStrategyBuilder
 from lock import AutoLockingValue
 from pwrite import SocketDataWriter
 
@@ -29,9 +30,6 @@ class CaptureComponent(Component):
         super().__init__()
         self.output_queue = Queue()
         self._capture_strategy = AutoLockingValue(capture_strategy)
-        self._thread = threading.Thread(target=self.run)
-        self._thread.daemon = True
-        self._thread.start()
 
     def set_capture_strategy(self, capture_strategy: AbstractCaptureStrategy):
         """
@@ -47,9 +45,6 @@ class CaptureComponent(Component):
             captured_data = self._capture_strategy.get().capture_screen()
             self.output_queue.put(captured_data)
 
-    def join(self):
-        self._thread.join()
-
 
 class EncoderComponent(Component):
     def __init__(self, width: int, height: int, input_queue: Queue, encoder_strategy: AbstractEncoderStrategy) -> None:
@@ -60,9 +55,6 @@ class EncoderComponent(Component):
         self.output_queue = Queue()
         self._input_queue = input_queue
         self._encoder_strategy = AutoLockingValue(encoder_strategy)
-        self._thread = threading.Thread(target=self.run)
-        self._thread.daemon = True
-        self._thread.start()
 
     def set_encoder_strategy(self, encoder_strategy: AbstractEncoderStrategy):
         """
@@ -85,9 +77,6 @@ class EncoderComponent(Component):
             if encoded_data:
                 self.output_queue.put(encoded_data)
 
-    def join(self):
-        self._thread.join()
-
 
 class NetworkComponent(Component):
     def __init__(self, width: int, height: int, input_queue: Queue, socket_writer: SocketDataWriter):
@@ -98,9 +87,6 @@ class NetworkComponent(Component):
         self._input_queue = input_queue
         self._running = AutoLockingValue(True)
         self._socket_writer = socket_writer
-        self._thread = threading.Thread(target=self.run)
-        self._thread.daemon = True
-        self._thread.start()
 
     def run(self) -> None:
         """
@@ -108,8 +94,85 @@ class NetworkComponent(Component):
         """
         while self.is_running():
             encoded_data = self._input_queue.get()
-            packet = VideoDataPacketFactory.create_packet(self._width, self._height, encoded_data)
+            packet = VideoContainerDataPacketFactory.create_packet(self._width, self._height, encoded_data)
             self._socket_writer.write_packet(packet)
 
-    def join(self):
-        self._thread.join()
+
+class CaptureEncodeNetworkPipeline:
+    def __init__(self, socket_writer: SocketDataWriter, fps: int):
+        self._capture_width = None
+        self._capture_height = None
+
+        # pipeline initialization
+        self._threads: Union[None, List[threading.Thread]] = None
+        capture_strategy = CaptureEncodeNetworkPipeline._get_default_capture_strategy(fps)
+        self._capture_component = CaptureComponent(
+            capture_strategy
+        )
+        self._capture_width = capture_strategy.get_monitor_width()
+        self._capture_height = capture_strategy.get_monitor_height()
+        self._encoder_component = EncoderComponent(
+            self._capture_width,
+            self._capture_height,
+            self._capture_component.output_queue,  # join queues between
+            CaptureEncodeNetworkPipeline._get_default_encoder_strategy(fps)
+        )
+        self._network_component = NetworkComponent(
+            self._capture_width,
+            self._capture_height,
+            self._encoder_component.output_queue,  # join queues between
+            socket_writer
+        )
+
+    def start(self):
+        if self._threads is None:
+            self._threads = []
+            for component in self._get_pipeline():
+                thread = threading.Thread(target=component.run)
+                thread.daemon = True
+                thread.start()
+                self._threads.append(thread)
+        else:
+            raise RuntimeError("Pipeline already started.")
+
+    def stop(self):
+        if len(self._threads) > 0:
+            for component in self._get_pipeline():
+                component.stop()
+            for thread in self._threads:
+                thread.join()
+            self._threads = []
+        else:
+            raise RuntimeError("Pipeline did not started")
+
+    def get_capture_component(self):
+        return self._capture_component
+
+    def get_encoder_component(self):
+        return self._encoder_component
+
+    def get_network_component(self):
+        return self._network_component
+
+    def get_capture_width(self):
+        return self._capture_width
+
+    def get_capture_height(self):
+        return self._capture_height
+
+    def _get_pipeline(self):
+        return [self._capture_component, self._encoder_component, self._network_component]
+
+    @staticmethod
+    def _get_default_capture_strategy(fps: int) -> AbstractCaptureStrategy:
+        return CaptureStrategyBuilder() \
+            .set_strategy_type("mss") \
+            .set_option("fps", fps) \
+            .build()
+
+    @staticmethod
+    def _get_default_encoder_strategy(fps: int) -> AbstractEncoderStrategy:
+        return EncoderStrategyBuilder() \
+            .set_strategy_type("default") \
+            .set_option("fps", fps) \
+            .build()

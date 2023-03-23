@@ -1,18 +1,29 @@
 import zlib
 from abc import ABC, abstractmethod
+from enum import IntEnum
 from typing import Optional, Any, Dict, Union
 
 import cv2
 import numpy as np
 
+from pfactory import VideoFrameDataPacketFactory
+
 
 class AbstractEncoderStrategy(ABC):
+    ID: int
+
     @abstractmethod
     def encode_frame(self, width: int, height: int, frame: bytes):
         pass
 
 
 class DefaultEncoder(AbstractEncoderStrategy):
+    ID = 0x01
+
+    class FrameType(IntEnum):
+        FULL_FRAME = 0x01
+        DIFF_FRAME = 0x02
+
     def __init__(self, fps: int) -> None:
         self._fps = fps
 
@@ -26,14 +37,22 @@ class DefaultEncoder(AbstractEncoderStrategy):
         self._last_frame = nframe
         if self._frame_count % self._fps == 0:
             self._frame_count = 1
-            return zlib.compress(nframe.tobytes())
+            compressed_frame = zlib.compress(nframe.tobytes())
+            packet = VideoFrameDataPacketFactory.create_packet(DefaultEncoder.ID,
+                                                               DefaultEncoder.FrameType.FULL_FRAME,
+                                                               compressed_frame)
+            return packet.get_bytes()
         else:
             self._frame_count += 1
             diff = cv2.absdiff(self._last_frame, nframe)
             mask = cv2.cvtColor(diff, cv2.COLOR_RGB2GRAY)
             _, mask = cv2.threshold(mask, 30, 255, cv2.THRESH_BINARY)
             diff_data = cv2.bitwise_and(frame, frame, mask=mask)
-            return zlib.compress(diff_data.tobytes())
+            compressed_frame = zlib.compress(diff_data.tobytes())
+            packet = VideoFrameDataPacketFactory.create_packet(DefaultEncoder.ID,
+                                                               DefaultEncoder.FrameType.DIFF_FRAME,
+                                                               compressed_frame)
+            return packet.get_bytes()
 
 
 class EncoderStrategyBuilder:
