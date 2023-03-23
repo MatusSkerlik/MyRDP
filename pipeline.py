@@ -115,7 +115,7 @@ class CaptureEncodeNetworkPipeline:
             self._capture_width,
             self._capture_height,
             self._capture_component.output_queue,  # join queues between
-            CaptureEncodeNetworkPipeline._get_default_encoder_strategy(fps)
+            CaptureEncodeNetworkPipeline._get_default_encoder_strategy(5)
         )
         self._network_component = NetworkComponent(
             self._capture_width,

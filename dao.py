@@ -16,23 +16,20 @@ class VideoData(AbstractDataObject):
         self._frame_type = frame_type
         self._data = data
 
-    def get_packet(self) -> Packet:
+    def to_packet(self) -> Packet:
         return VideoContainerDataPacketFactory.create_packet(self._width, self._height, self._data)
 
-    def get_bytes(self) -> bytes:
-        return self.get_packet().get_bytes()
-
-    def get_width(self):
+    def get_width(self) -> int:
         return self._width
 
-    def get_height(self):
+    def get_height(self) -> int:
         return self._height
 
-    def get_encoder_type(self):
+    def get_encoder_type(self) -> int:
         return self._encoder_type
 
-    def get_frame_type(self):
+    def get_frame_type(self) -> int:
         return self._frame_type
 
-    def get_data(self):
+    def get_data(self) -> bytes:
         return self._data

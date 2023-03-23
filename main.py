@@ -1,6 +1,7 @@
 import multiprocessing
 import subprocess
 import sys
+import time
 
 
 def start_server():
@@ -16,6 +17,7 @@ if __name__ == "__main__":
     client_process = multiprocessing.Process(target=start_client)
 
     server_process.start()
+    time.sleep(1)
     client_process.start()
 
     server_process.join()

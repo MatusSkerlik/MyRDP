@@ -67,7 +67,7 @@ class Server:
                 self._bandwidth_state_machine.update_state(self._monitor.get_bandwidth())
 
                 # Handle received data and render frames
-                frames = self._decoder_strategy.decode_packet(width, height, data)
+                frames = self._decoder_strategy.decode_packet(data_object)
 
                 # Render only last frame
                 frame = frames[-1]
@@ -137,7 +137,7 @@ class Server:
 
 
 HOST = "127.0.0.1"
-PORT = 8080
+PORT = 8085
 FPS = 30
 
 if __name__ == "__main__":

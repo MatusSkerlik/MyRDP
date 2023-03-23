@@ -1,7 +1,6 @@
 import io
 import socket
 import struct
-import zlib
 
 from dao import VideoData, AbstractDataObject
 from enums import PacketType
@@ -30,9 +29,8 @@ class BytesReader:
         """Read a boolean value from the buffer as a single byte (1 for True, 0 for False)."""
         return self.read_byte() == 1
 
-    def read_bytes(self) -> bytes:
+    def read_bytes(self, length: int) -> bytes:
         """Read raw bytes from the buffer, prefixed with the length of the bytes as an integer."""
-        length = self.read_int()
         return self.buffer.read(length)
 
 
@@ -105,7 +103,7 @@ class SocketDataReader(BytesReader):
         self._ensure_data(4)  # Length of the bytes
         length = super().read_int()
         self._ensure_data(length)
-        return super().read_bytes()
+        return super().read_bytes(length)
 
     def read_packet(self) -> AbstractDataObject:
         """
@@ -126,12 +124,11 @@ class SocketDataReader(BytesReader):
                 frame_packet = self.read_bytes()
 
                 # Seek to the start of frame packet, -4 represents byte array size
-                self.buffer.seek(self.buffer.tell() - 1 - len(frame_packet) - 4)
+                self.buffer.seek(self.buffer.tell() - len(frame_packet))
 
                 encoder_type = self.read_int()
                 frame_type = self.read_int()
-                compressed_data = self.read_bytes()
-                encoded_frame = zlib.decompress(compressed_data)
+                encoded_frame = self.read_bytes()
 
                 return VideoData(width, height, encoder_type, frame_type, encoded_frame)
             else:

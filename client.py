@@ -68,7 +68,7 @@ class Client:
 
 
 HOST = "127.0.0.1"
-PORT = 8080
+PORT = 8085
 FPS = 30
 
 if __name__ == "__main__":
