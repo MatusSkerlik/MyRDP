@@ -2,7 +2,7 @@ import pygame
 from pygame import QUIT
 
 from lock import AutoLockingValue
-from pipeline import EncoderComponent, CaptureComponent, NetworkComponent, CaptureEncodeNetworkPipeline
+from pipeline import EncoderComponent, CaptureComponent, SocketWriterComponent, CaptureEncodeNetworkPipeline
 from pread import SocketDataReader
 from pwrite import SocketDataWriter
 from sfactory import SocketFactory
@@ -22,7 +22,7 @@ class Client:
             pipeline_running (bool): Flag indicating if the pipeline is running.
             capture_component (CaptureComponent): The screen capture component of the pipeline.
             encoder_component (EncoderComponent): The video encoder component of the pipeline.
-            network_component (NetworkComponent): The networking component of the pipeline.
+            network_component (SocketWriterComponent): The networking component of the pipeline.
         """
         self._title = title
         self._width = width

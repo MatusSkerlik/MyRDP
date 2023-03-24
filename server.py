@@ -48,13 +48,14 @@ class Server:
         font = pygame.font.Font(None, 30)
 
         while self._running.get():
-            screen.fill((0, 0, 0))
 
             # Receive data object
             data_object = self._socket_reader.read_packet()
 
             # Handle video data
             if isinstance(data_object, VideoData):
+                screen.fill((0, 0, 0))
+
                 video_data = data_object
                 width = video_data.get_width()
                 height = video_data.get_height()
@@ -111,13 +112,13 @@ class Server:
                 elif event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.MOUSEBUTTONUP:
                     x, y = event.pos
                     button = MouseButton(event.button)
-                    state = ButtonState.PRESSED if event.type == pygame.MOUSEBUTTONDOWN else ButtonState.RELEASED
+                    state = ButtonState.PRESS if event.type == pygame.MOUSEBUTTONDOWN else ButtonState.RELEASE
                     cmd = MouseClickCommand(self._socket_writer)
                     cmd.execute(x, y, button, state)
 
                 elif event.type == pygame.KEYDOWN or event.type == pygame.KEYUP:
                     key_code = ASCIIEnum(event.key)
-                    state = ButtonState.PRESSED if event.type == pygame.KEYDOWN else ButtonState.RELEASED
+                    state = ButtonState.PRESS if event.type == pygame.KEYDOWN else ButtonState.RELEASE
                     cmd = KeyboardEventCommand(self._socket_writer)
                     cmd.execute(key_code, state)
 

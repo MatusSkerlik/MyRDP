@@ -1,12 +1,15 @@
+import queue
 import threading
 from abc import ABC, abstractmethod
 from queue import Queue
 from typing import Union, List
 
 from capture import AbstractCaptureStrategy, CaptureStrategyBuilder
-from dao import VideoContainerDataPacketFactory
+from dao import VideoContainerDataPacketFactory, AbstractDataObject
+from decode import DecoderStrategyBuilder
 from encode import AbstractEncoderStrategy, EncoderStrategyBuilder
 from lock import AutoLockingValue
+from pread import SocketDataReader
 from pwrite import SocketDataWriter
 
 
@@ -28,7 +31,7 @@ class Component(ABC):
 class CaptureComponent(Component):
     def __init__(self, capture_strategy: AbstractCaptureStrategy):
         super().__init__()
-        self.output_queue = Queue()
+        self.output_queue = Queue(maxsize=64)
         self._capture_strategy = AutoLockingValue(capture_strategy)
 
     def set_capture_strategy(self, capture_strategy: AbstractCaptureStrategy):
@@ -43,7 +46,10 @@ class CaptureComponent(Component):
         """
         while self.is_running():
             captured_data = self._capture_strategy.get().capture_screen()
-            self.output_queue.put(captured_data)
+            try:
+                self.output_queue.put(captured_data, block=False)
+            except queue.Full:
+                pass
 
 
 class EncoderComponent(Component):
@@ -52,7 +58,7 @@ class EncoderComponent(Component):
         self._width = width
         self._height = height
 
-        self.output_queue = Queue()
+        self.output_queue = Queue(maxsize=64)
         self._input_queue = input_queue
         self._encoder_strategy = AutoLockingValue(encoder_strategy)
 
@@ -75,10 +81,13 @@ class EncoderComponent(Component):
             # enough data to produce an encoded frame. If not, it will wait
             # for more data before outputting an encoded frame.
             if encoded_data:
-                self.output_queue.put(encoded_data)
+                try:
+                    self.output_queue.put(encoded_data)
+                except queue.Full:
+                    pass
 
 
-class NetworkComponent(Component):
+class SocketWriterComponent(Component):
     def __init__(self, width: int, height: int, input_queue: Queue, socket_writer: SocketDataWriter):
         super().__init__()
         self._width = width
@@ -115,9 +124,9 @@ class CaptureEncodeNetworkPipeline:
             self._capture_width,
             self._capture_height,
             self._capture_component.output_queue,  # join queues between
-            CaptureEncodeNetworkPipeline._get_default_encoder_strategy(5)
+            CaptureEncodeNetworkPipeline._get_default_encoder_strategy(1)
         )
-        self._network_component = NetworkComponent(
+        self._network_component = SocketWriterComponent(
             self._capture_width,
             self._capture_height,
             self._encoder_component.output_queue,  # join queues between
@@ -175,4 +184,31 @@ class CaptureEncodeNetworkPipeline:
         return EncoderStrategyBuilder() \
             .set_strategy_type("default") \
             .set_option("fps", fps) \
+            .build()
+
+
+class SocketReaderComponent(Component):
+    def __init__(self, socket_reader: SocketDataReader):
+        super().__init__()
+        self._output_queue = queue.Queue(maxsize=64)
+        self._running = AutoLockingValue(True)
+        self._socket_reader = socket_reader
+
+    def run(self) -> None:
+        """
+        Continuously sends encoded data from the input queue through the network.
+        """
+        while self.is_running():
+            object_data = self._socket_reader.read_packet()
+            if isinstance(object_data, AbstractDataObject):
+                self._output_queue.put(object_data)
+
+
+class ReadDecodePipeline:
+    def __init__(self, socket_reader: SocketDataWriter):
+        pass
+
+    def _get_default_decoder_strategy(self):
+        return DecoderStrategyBuilder() \
+            .set_strategy_type("default") \
             .build()

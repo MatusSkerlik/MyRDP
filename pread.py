@@ -1,10 +1,10 @@
 import io
 import socket
 import struct
+from typing import Union
 
 from dao import VideoData, AbstractDataObject
 from enums import PacketType
-from error import UnexpectedPacketTypeError
 
 
 class BytesReader:
@@ -105,7 +105,7 @@ class SocketDataReader(BytesReader):
         self._ensure_data(length)
         return super().read_bytes(length)
 
-    def read_packet(self) -> AbstractDataObject:
+    def read_packet(self) -> Union[None, AbstractDataObject]:
         """
         Reads a packet from the buffer and returns its content.
         Handles different packet types and raises an UnexpectedPacketTypeError
@@ -115,10 +115,11 @@ class SocketDataReader(BytesReader):
             video_data (bytes): The video frame_packet contained in the packet.
         """
         try:
-            packet_type = PacketType(self.read_byte())
-
+            try:
+                packet_type = PacketType(self.read_byte())
+            except ValueError:
+                return None
             if packet_type == PacketType.VIDEO_DATA:
-
                 width = self.read_int()
                 height = self.read_int()
                 frame_packet = self.read_bytes()
@@ -131,7 +132,5 @@ class SocketDataReader(BytesReader):
                 encoded_frame = self.read_bytes()
 
                 return VideoData(width, height, encoder_type, frame_type, encoded_frame)
-            else:
-                raise UnexpectedPacketTypeError(packet_type)
         finally:
             self._flush_read_data()
