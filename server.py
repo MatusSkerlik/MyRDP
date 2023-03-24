@@ -2,10 +2,9 @@ import pygame
 
 from bandwidth import BandwidthMonitor, BandwidthStateMachine, BandwidthFormatter
 from command import MouseMoveCommand, MouseClickCommand, KeyboardEventCommand
-from dao import VideoData
-from decode import AbstractDecoderStrategy, DefaultDecoder
 from enums import MouseButton, ButtonState, ASCIIEnum
 from lock import AutoLockingValue
+from pipeline import ReadDecodePipeline
 from pread import SocketDataReader
 from pwrite import SocketDataWriter
 from sfactory import SocketFactory
@@ -29,10 +28,7 @@ class Server:
         self._socket_writer = SocketDataWriter(self._client_socket)
         self._monitor = BandwidthMonitor()
         self._bandwidth_state_machine = BandwidthStateMachine()
-        self._decoder_strategy = DefaultDecoder()
-
-    def set_decoding_strategy(self, decoder_strategy: AbstractDecoderStrategy):
-        self._decoder_strategy = decoder_strategy
+        self._read_decode_pipeline = ReadDecodePipeline(self._socket_reader)
 
     def is_running(self):
         return self._running.get()
@@ -41,6 +37,7 @@ class Server:
         if self._running.get():
             raise RuntimeError("The 'run' method can only be called once")
         self._running.set(True)
+        self._read_decode_pipeline.start()
 
         pygame.init()
         clock = pygame.time.Clock()
@@ -48,46 +45,41 @@ class Server:
         font = pygame.font.Font(None, 30)
 
         while self._running.get():
+            screen.fill((0, 0, 0))
 
             # Receive data object
-            data_object = self._socket_reader.read_packet()
+            video_data, frames = self._read_decode_pipeline.get()
 
             # Handle video data
-            if isinstance(data_object, VideoData):
-                screen.fill((0, 0, 0))
 
-                video_data = data_object
-                width = video_data.get_width()
-                height = video_data.get_height()
-                data = video_data.get_data()
+            width = video_data.get_width()
+            height = video_data.get_height()
+            data = video_data.get_data()
 
-                # Update minute bandwidth statistics
-                self._monitor.register_received_bytes(len(data))
+            # Update minute bandwidth statistics
+            self._monitor.register_received_bytes(len(data))
 
-                # Update bandwidth state machine
-                self._bandwidth_state_machine.update_state(self._monitor.get_bandwidth())
+            # Update bandwidth state machine
+            self._bandwidth_state_machine.update_state(self._monitor.get_bandwidth())
 
-                # Handle received data and render frames
-                frames = self._decoder_strategy.decode_packet(data_object)
+            # Render only last frame
+            frame = frames[-1]
+            img = pygame.image.frombuffer(frame, (width, height), "RGB")
 
-                # Render only last frame
-                frame = frames[-1]
-                img = pygame.image.frombuffer(frame, (width, height), "RGB")
+            # Calculate new width and height while preserving aspect ratio
+            aspect_ratio = float(width) / float(height)
+            new_height = self._height
+            new_width = int(aspect_ratio * new_height)
+            if new_width > self._width:
+                new_width = self._width
+                new_height = int(new_width / aspect_ratio)
 
-                # Calculate new width and height while preserving aspect ratio
-                aspect_ratio = float(width) / float(height)
-                new_height = self._height
-                new_width = int(aspect_ratio * new_height)
-                if new_width > self._width:
-                    new_width = self._width
-                    new_height = int(new_width / aspect_ratio)
+            img_scaled = pygame.transform.scale(img, (new_width, new_height))
+            x_offset = (self._width - new_width) // 2
+            y_offset = (self._height - new_height) // 2
 
-                img_scaled = pygame.transform.scale(img, (new_width, new_height))
-                x_offset = (self._width - new_width) // 2
-                y_offset = (self._height - new_height) // 2
-
-                # Render frame
-                screen.blit(img_scaled, (x_offset, y_offset))
+            # Render frame
+            screen.blit(img_scaled, (x_offset, y_offset))
 
             fps = clock.get_fps()
             bandwidth = self._monitor.get_bandwidth()
@@ -133,8 +125,9 @@ class Server:
         pygame.quit()
 
     def stop(self) -> None:
-        self._server_socket.close()
+        self._read_decode_pipeline.stop()
         self._running.set(False)
+        self._server_socket.close()
 
 
 HOST = "127.0.0.1"

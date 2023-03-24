@@ -2,11 +2,13 @@ import queue
 import threading
 from abc import ABC, abstractmethod
 from queue import Queue
-from typing import Union, List
+from typing import Union, List, Tuple
+
+import numpy as np
 
 from capture import AbstractCaptureStrategy, CaptureStrategyBuilder
-from dao import VideoContainerDataPacketFactory, AbstractDataObject
-from decode import DecoderStrategyBuilder
+from dao import VideoContainerDataPacketFactory, VideoData
+from decode import DecoderStrategyBuilder, AbstractDecoderStrategy
 from encode import AbstractEncoderStrategy, EncoderStrategyBuilder
 from lock import AutoLockingValue
 from pread import SocketDataReader
@@ -107,8 +109,39 @@ class SocketWriterComponent(Component):
             self._socket_writer.write_packet(packet)
 
 
-class CaptureEncodeNetworkPipeline:
+class AbstractPipeline(ABC):
+    def __init__(self):
+        self._threads = None
+
+    def start(self):
+        if self._threads is None:
+            self._threads = []
+            for component in self.get_pipeline():
+                thread = threading.Thread(target=component.run)
+                thread.daemon = True
+                thread.start()
+                self._threads.append(thread)
+        else:
+            raise RuntimeError("Pipeline already started.")
+
+    def stop(self):
+        if len(self._threads) > 0:
+            for component in self.get_pipeline():
+                component.stop()
+            for thread in self._threads:
+                thread.join()
+            self._threads = []
+        else:
+            raise RuntimeError("Pipeline did not started")
+
+    @abstractmethod
+    def get_pipeline(self):
+        pass
+
+
+class CaptureEncodeNetworkPipeline(AbstractPipeline):
     def __init__(self, socket_writer: SocketDataWriter, fps: int):
+        super().__init__()
         self._capture_width = None
         self._capture_height = None
 
@@ -133,27 +166,6 @@ class CaptureEncodeNetworkPipeline:
             socket_writer
         )
 
-    def start(self):
-        if self._threads is None:
-            self._threads = []
-            for component in self._get_pipeline():
-                thread = threading.Thread(target=component.run)
-                thread.daemon = True
-                thread.start()
-                self._threads.append(thread)
-        else:
-            raise RuntimeError("Pipeline already started.")
-
-    def stop(self):
-        if len(self._threads) > 0:
-            for component in self._get_pipeline():
-                component.stop()
-            for thread in self._threads:
-                thread.join()
-            self._threads = []
-        else:
-            raise RuntimeError("Pipeline did not started")
-
     def get_capture_component(self):
         return self._capture_component
 
@@ -169,7 +181,7 @@ class CaptureEncodeNetworkPipeline:
     def get_capture_height(self):
         return self._capture_height
 
-    def _get_pipeline(self):
+    def get_pipeline(self):
         return [self._capture_component, self._encoder_component, self._network_component]
 
     @staticmethod
@@ -190,7 +202,7 @@ class CaptureEncodeNetworkPipeline:
 class SocketReaderComponent(Component):
     def __init__(self, socket_reader: SocketDataReader):
         super().__init__()
-        self._output_queue = queue.Queue(maxsize=64)
+        self.output_queue = queue.Queue(maxsize=64)
         self._running = AutoLockingValue(True)
         self._socket_reader = socket_reader
 
@@ -200,15 +212,57 @@ class SocketReaderComponent(Component):
         """
         while self.is_running():
             object_data = self._socket_reader.read_packet()
-            if isinstance(object_data, AbstractDataObject):
-                self._output_queue.put(object_data)
+
+            if object_data is None:
+                continue
+
+            if isinstance(object_data, VideoData):
+                self.output_queue.put(object_data)
+            else:
+                # TODO handle different packets if sent here
+                raise ValueError
 
 
-class ReadDecodePipeline:
-    def __init__(self, socket_reader: SocketDataWriter):
-        pass
+class DecoderComponent(Component):
+    def __init__(self, input_queue: Queue, decoder_strategy: AbstractDecoderStrategy):
+        super().__init__()
+        self._input_queue = input_queue
+        self.output_queue = queue.Queue(maxsize=64)
+        self._decoder_strategy = AutoLockingValue(decoder_strategy)
 
-    def _get_default_decoder_strategy(self):
+    def set_decoder_strategy(self, decoder_strategy: AbstractDecoderStrategy):
+        self._decoder_strategy.set(decoder_strategy)
+
+    def run(self) -> None:
+        while self.is_running():
+            video_data: VideoData = self._input_queue.get()
+            decoded_frame = self._decoder_strategy.get().decode_packet(video_data)
+            self.output_queue.put((video_data, decoded_frame))
+
+
+class ReadDecodePipeline(AbstractPipeline):
+    def __init__(self, socket_reader: SocketDataReader):
+        super().__init__()
+        self._socket_reader_component = SocketReaderComponent(socket_reader)
+        self._decoder_component = DecoderComponent(
+            self._socket_reader_component.output_queue,
+            self._get_default_decoder_strategy()
+        )
+
+    def get_socket_reader_component(self):
+        return self._socket_reader_component
+
+    def get_decoder_component(self):
+        return self._decoder_component
+
+    def get_pipeline(self):
+        return [self._socket_reader_component, self._decoder_component]
+
+    def get(self) -> Tuple[VideoData, List[np.ndarray]]:
+        return self._decoder_component.output_queue.get()
+
+    @staticmethod
+    def _get_default_decoder_strategy():
         return DecoderStrategyBuilder() \
             .set_strategy_type("default") \
             .build()

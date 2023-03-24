@@ -63,8 +63,8 @@ class Client:
 
     def stop(self):
         self._pipeline.stop()
-        self._socket.close()
         self._running.set(False)
+        self._socket.close()
 
 
 HOST = "127.0.0.1"
