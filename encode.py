@@ -30,6 +30,9 @@ class DefaultEncoder(AbstractEncoderStrategy):
         self._last_frame: Union[None, np.ndarray] = None
         self._frame_count = 0
 
+    def __str__(self):
+        return f"DefaultEncoder(fps={self._fps})"
+
     def encode_frame(self, width: int, height: int, frame: bytes) -> bytes:
         nframe = np.frombuffer(frame, dtype=np.uint8)
         nframe = nframe.reshape((width, height, 3))

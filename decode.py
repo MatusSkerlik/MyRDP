@@ -23,6 +23,9 @@ class DefaultDecoder(AbstractDecoderStrategy):
     def __init__(self):
         self._last_frame: Union[None, np.ndarray] = None
 
+    def __str__(self):
+        return f"DefaultDecoder()"
+
     def decode_packet(self, video_data: VideoData) -> List[np.ndarray]:
         width = video_data.get_width()
         height = video_data.get_height()

@@ -2,12 +2,12 @@ import pygame
 
 from bandwidth import BandwidthMonitor, BandwidthStateMachine, BandwidthFormatter
 from command import MouseMoveCommand, MouseClickCommand, KeyboardEventCommand
+from connection import ReconnectingServerConnection
 from enums import MouseButton, ButtonState, ASCIIEnum
 from lock import AutoLockingValue
 from pipeline import ReadDecodePipeline
 from pread import SocketDataReader
 from pwrite import SocketDataWriter
-from sfactory import SocketFactory
 
 
 class Server:
@@ -20,12 +20,9 @@ class Server:
         self._fps = fps
 
         self._running = AutoLockingValue(False)
-        self._server_socket = SocketFactory.bind(host, port)
-        print(f"Server listening on {self._host}:{self._port}")
-        self._client_socket, self._client_ip = self._server_socket.accept()
-        print(f"Connected to client at {self._client_ip}")
-        self._socket_reader = SocketDataReader(self._client_socket)
-        self._socket_writer = SocketDataWriter(self._client_socket)
+        self._connection = ReconnectingServerConnection(host, port)
+        self._socket_reader = SocketDataReader(self._connection)
+        self._socket_writer = SocketDataWriter(self._connection)
         self._monitor = BandwidthMonitor()
         self._bandwidth_state_machine = BandwidthStateMachine()
         self._read_decode_pipeline = ReadDecodePipeline(self._socket_reader)
@@ -37,6 +34,7 @@ class Server:
         if self._running.get():
             raise RuntimeError("The 'run' method can only be called once")
         self._running.set(True)
+        self._connection.start()
         self._read_decode_pipeline.start()
 
         pygame.init()
@@ -45,54 +43,7 @@ class Server:
         font = pygame.font.Font(None, 30)
 
         while self._running.get():
-            screen.fill((0, 0, 0))
-
-            # Receive data object
-            video_data, frames = self._read_decode_pipeline.get()
-
-            # Handle video data
-
-            width = video_data.get_width()
-            height = video_data.get_height()
-            data = video_data.get_data()
-
-            # Update minute bandwidth statistics
-            self._monitor.register_received_bytes(len(data))
-
-            # Update bandwidth state machine
-            self._bandwidth_state_machine.update_state(self._monitor.get_bandwidth())
-
-            # Render only last frame
-            frame = frames[-1]
-            img = pygame.image.frombuffer(frame, (width, height), "RGB")
-
-            # Calculate new width and height while preserving aspect ratio
-            aspect_ratio = float(width) / float(height)
-            new_height = self._height
-            new_width = int(aspect_ratio * new_height)
-            if new_width > self._width:
-                new_width = self._width
-                new_height = int(new_width / aspect_ratio)
-
-            img_scaled = pygame.transform.scale(img, (new_width, new_height))
-            x_offset = (self._width - new_width) // 2
-            y_offset = (self._height - new_height) // 2
-
-            # Render frame
-            screen.blit(img_scaled, (x_offset, y_offset))
-
-            fps = clock.get_fps()
-            bandwidth = self._monitor.get_bandwidth()
-
-            fps_text = font.render(f"FPS: {fps:.2f}", True, (102, 255, 102))
-            bandwidth_text = font.render(f"Bandwidth: {BandwidthFormatter.format(bandwidth)}", True, (102, 255, 102))
-
-            # Render FPS and bandwidth
-            screen.blit(fps_text, (self._width - fps_text.get_width() - 10, 10))
-            screen.blit(bandwidth_text, (self._width - bandwidth_text.get_width() - 10, fps_text.get_height() + 15))
-
-            # Render apply
-            pygame.display.flip()
+            clock.tick(self._fps)
 
             # Handle events
             for event in pygame.event.get():
@@ -119,20 +70,71 @@ class Server:
 
                 elif event.type == pygame.QUIT:
                     self.stop()
+                    break
 
-            clock.tick(self._fps)
+            # Receive data object
+            data = self._read_decode_pipeline.get()
+
+            # If data from pipeline are available
+            if data is not None:
+                screen.fill((0, 0, 0))
+
+                # Handle video data
+                video_data, frames = data
+                width = video_data.get_width()
+                height = video_data.get_height()
+                data = video_data.get_data()
+
+                # Update minute bandwidth statistics
+                self._monitor.register_received_bytes(len(data))
+
+                # Update bandwidth state machine
+                self._bandwidth_state_machine.update_state(self._monitor.get_bandwidth())
+
+                # Render only last frame
+                frame = frames[-1]
+                img = pygame.image.frombuffer(frame, (width, height), "RGB")
+
+                # Calculate new width and height while preserving aspect ratio
+                aspect_ratio = float(width) / float(height)
+                new_height = self._height
+                new_width = int(aspect_ratio * new_height)
+                if new_width > self._width:
+                    new_width = self._width
+                    new_height = int(new_width / aspect_ratio)
+
+                img_scaled = pygame.transform.scale(img, (new_width, new_height))
+                x_offset = (self._width - new_width) // 2
+                y_offset = (self._height - new_height) // 2
+
+                # Render frame
+                screen.blit(img_scaled, (x_offset, y_offset))
+
+                fps = clock.get_fps()
+                bandwidth = self._monitor.get_bandwidth()
+
+                fps_text = font.render(f"FPS: {fps:.2f}", True, (102, 255, 102))
+                bandwidth_text = font.render(f"Bandwidth: {BandwidthFormatter.format(bandwidth)}", True,
+                                             (102, 255, 102))
+
+                # Render FPS and bandwidth
+                screen.blit(fps_text, (self._width - fps_text.get_width() - 10, 10))
+                screen.blit(bandwidth_text, (self._width - bandwidth_text.get_width() - 10, fps_text.get_height() + 15))
+
+                # Render apply
+                pygame.display.flip()
 
         pygame.quit()
 
     def stop(self) -> None:
+        self._connection.stop()
         self._read_decode_pipeline.stop()
         self._running.set(False)
-        self._server_socket.close()
 
 
 HOST = "127.0.0.1"
 PORT = 8085
-FPS = 30
+FPS = 25
 
 if __name__ == "__main__":
     server = Server(HOST, PORT, 1366, 720, FPS)

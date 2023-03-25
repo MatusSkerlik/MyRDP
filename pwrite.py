@@ -1,15 +1,10 @@
-import socket
-
+from connection import Connection
 from packet import Packet
 
 
 class SocketDataWriter:
-    def __init__(self, sock: socket.socket):
-        self._socket = sock
+    def __init__(self, connection: Connection):
+        self._connection = connection
 
     def write_packet(self, packet: Packet) -> None:
-        """
-        Send a packet to the connected socket.
-        :param packet: The packet data to be sent as bytes.
-        """
-        self._socket.sendall(packet.get_bytes())
+        self._connection.write(packet.get_bytes())

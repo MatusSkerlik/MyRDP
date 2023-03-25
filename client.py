@@ -1,11 +1,11 @@
 import pygame
 from pygame import QUIT
 
+from connection import ReconnectingClientConnection
 from lock import AutoLockingValue
 from pipeline import EncoderComponent, CaptureComponent, SocketWriterComponent, CaptureEncodeNetworkPipeline
 from pread import SocketDataReader
 from pwrite import SocketDataWriter
-from sfactory import SocketFactory
 
 
 class Client:
@@ -31,9 +31,9 @@ class Client:
         self._fps = fps
         self._running = AutoLockingValue(False)
 
-        self._socket = SocketFactory.connect(host, port)
-        self._socket_reader = SocketDataReader(self._socket)
-        self._socket_writer = SocketDataWriter(self._socket)
+        self._connection = ReconnectingClientConnection(host, port)
+        self._socket_reader = SocketDataReader(self._connection)
+        self._socket_writer = SocketDataWriter(self._connection)
         self._pipeline = CaptureEncodeNetworkPipeline(self._socket_writer, fps)
 
     def is_running(self):
@@ -43,6 +43,7 @@ class Client:
         if self._running.get():
             raise RuntimeError("The 'run' method can only be called once")
         self._running.set(True)
+        self._connection.start()
         self._pipeline.start()
 
         pygame.init()
@@ -54,6 +55,7 @@ class Client:
             for event in pygame.event.get():
                 if event.type == QUIT:
                     self.stop()
+                    break
 
             screen.fill((0, 0, 0))
             pygame.display.flip()
@@ -62,14 +64,14 @@ class Client:
         pygame.quit()
 
     def stop(self):
+        self._connection.stop()
         self._pipeline.stop()
         self._running.set(False)
-        self._socket.close()
 
 
 HOST = "127.0.0.1"
 PORT = 8085
-FPS = 30
+FPS = 25
 
 if __name__ == "__main__":
     client = Client(HOST, PORT, 200, 200, FPS)
