@@ -24,8 +24,8 @@ class AutoLockingValue(Generic[T]):
         shared_value.set(84)
 
     Attributes:
-        value: The protected value.
-        lock: A threading.Lock object used to ensure atomic access to the value.
+        _value: The protected value.
+        _lock: A threading.Lock object used to ensure atomic access to the value.
     """
 
     def __init__(self, value: T):
@@ -47,3 +47,16 @@ class AutoLockingValue(Generic[T]):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self._lock.release()
+
+    # Implement __getattr__
+    def __getattr__(self, name):
+        if name == "value":
+            return self.get()
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+
+    # Implement __setattr__
+    def __setattr__(self, name, value):
+        if name == "value":
+            self.set(value)
+        else:
+            super().__setattr__(name, value)

@@ -7,6 +7,10 @@ from dao import VideoData, AbstractDataObject
 from enums import PacketType
 
 
+class InvalidPacketType(Exception):
+    pass
+
+
 class BytesReader:
     def __init__(self, data: bytes):
         self.buffer = io.BytesIO(data)
@@ -45,11 +49,11 @@ class SocketDataReader(BytesReader):
         Raises a ConnectionError if the connection is closed.
         """
         data = self._connection.read(self._buffer_size)
-        if data is not None:
-            current_pos = self.buffer.tell()
-            self.buffer.seek(0, io.SEEK_END)
-            self.buffer.write(data)
-            self.buffer.seek(current_pos)
+
+        current_pos = self.buffer.tell()
+        self.buffer.seek(0, io.SEEK_END)
+        self.buffer.write(data)
+        self.buffer.seek(current_pos)
 
     def _flush_read_data(self):
         """
@@ -94,7 +98,12 @@ class SocketDataReader(BytesReader):
 
     def read_packet(self) -> Union[None, AbstractDataObject]:
         try:
-            packet_type = PacketType(self.read_byte())
+            try:
+                packet_type = PacketType(self.read_byte())
+            except ValueError:
+                # This error indicates, that reset should be made
+                raise InvalidPacketType
+
             if packet_type == PacketType.VIDEO_DATA:
                 width = self.read_int()
                 height = self.read_int()
@@ -107,8 +116,11 @@ class SocketDataReader(BytesReader):
                 frame_type = self.read_int()
                 encoded_frame = self.read_bytes()
 
+                self._flush_read_data()
+
                 return VideoData(width, height, encoder_type, frame_type, encoded_frame)
-            else:
-                return None
-        finally:
-            self._flush_read_data()
+
+            raise NotImplementedError
+        except ConnectionError:
+            # Connection lost, reset buffer
+            self.buffer = io.BytesIO()

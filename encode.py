@@ -1,4 +1,3 @@
-import zlib
 from abc import ABC, abstractmethod
 from enum import IntEnum
 from typing import Optional, Any, Dict, Union
@@ -17,7 +16,7 @@ class AbstractEncoderStrategy(ABC):
         pass
 
 
-class DefaultEncoder(AbstractEncoderStrategy):
+class DefaultEncoder:
     ID = 0x01
 
     class FrameType(IntEnum):
@@ -27,7 +26,7 @@ class DefaultEncoder(AbstractEncoderStrategy):
     def __init__(self, fps: int) -> None:
         self._fps = fps
 
-        self._last_frame: Union[None, np.ndarray] = None
+        self._last_frame: Union[None, cv2.UMat] = None
         self._frame_count = 0
 
     def __str__(self):
@@ -35,12 +34,12 @@ class DefaultEncoder(AbstractEncoderStrategy):
 
     def encode_frame(self, width: int, height: int, frame: bytes) -> bytes:
         nframe = np.frombuffer(frame, dtype=np.uint8)
-        nframe = nframe.reshape((width, height, 3))
+        nframe = cv2.UMat(nframe.reshape((width, height, 3)))
 
         try:
             if self._last_frame is None or self._frame_count % self._fps == 0:
                 self._frame_count = 1
-                compressed_frame = zlib.compress(nframe.tobytes())
+                compressed_frame = nframe.get().tobytes()
                 packet = VideoFrameDataPacketFactory.create_packet(DefaultEncoder.ID,
                                                                    DefaultEncoder.FrameType.FULL_FRAME,
                                                                    compressed_frame)
@@ -49,9 +48,9 @@ class DefaultEncoder(AbstractEncoderStrategy):
                 self._frame_count += 1
                 diff = cv2.absdiff(self._last_frame, nframe)
                 mask = cv2.cvtColor(diff, cv2.COLOR_RGB2GRAY)
-                _, mask = cv2.threshold(mask, 30, 255, cv2.THRESH_BINARY)
+                _, mask = cv2.threshold(mask, 1, 255, cv2.THRESH_BINARY)
                 diff_data = cv2.bitwise_and(self._last_frame, nframe, mask=mask)
-                compressed_frame = zlib.compress(diff_data.tobytes())
+                compressed_frame = diff_data.get().tobytes()
                 packet = VideoFrameDataPacketFactory.create_packet(DefaultEncoder.ID,
                                                                    DefaultEncoder.FrameType.DIFF_FRAME,
                                                                    compressed_frame)

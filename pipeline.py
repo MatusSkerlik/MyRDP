@@ -1,5 +1,6 @@
 import queue
 import threading
+import time
 from abc import ABC, abstractmethod
 from queue import Queue
 from typing import Union, List, Tuple
@@ -35,10 +36,10 @@ class CaptureComponent(Component):
         super().__init__()
         self.output_queue = Queue(maxsize=1)
         self._capture_strategy = AutoLockingValue(capture_strategy)
-        self._event = event
+        self._sync_event = event
 
     def __str__(self):
-        return f"CaptureComponent(event={self._event.is_set()})"
+        return f"CaptureComponent(event={self._sync_event.is_set()})"
 
     def set_capture_strategy(self, capture_strategy: AbstractCaptureStrategy):
         """
@@ -51,14 +52,14 @@ class CaptureComponent(Component):
         Continuously captures screen images and puts it in the output queue.
         """
         while self.is_running():
-            self._event.wait()
+            self._sync_event.wait()
             captured_data = self._capture_strategy.get().capture_screen()
             self.output_queue.put(captured_data)
-            self._event.clear()
+            self._sync_event.clear()
 
     def stop(self):
         super().stop()
-        self._event.set()
+        self._sync_event.set()
 
 
 class EncoderComponent(Component):
@@ -86,7 +87,11 @@ class EncoderComponent(Component):
         in the output queue.
         """
         while self.is_running():
-            captured_data = self._input_queue.get()
+            try:
+                captured_data = self._input_queue.get(block=False)
+            except queue.Empty:
+                time.sleep(0.001)
+                continue
             encoded_data = self._encoder_strategy.get().encode_frame(self._width, self._height, captured_data)
 
             # If encoded_data is available, it means the encoding strategy has
@@ -98,31 +103,39 @@ class EncoderComponent(Component):
 
 class SocketWriterComponent(Component):
     def __init__(self, width: int, height: int, input_queue: Queue, socket_writer: SocketDataWriter,
-                 event: threading.Event):
+                 synchronization_event: threading.Event):
         super().__init__()
         self._width = width
         self._height = height
 
         self._input_queue = input_queue
         self._socket_writer = socket_writer
-        self._event = event
+        self._sync_event = synchronization_event
 
     def __str__(self):
-        return f"SocketWriterComponent(width={self._width}, height={self._height}, event={self._event.is_set()})"
+        return f"SocketWriterComponent(width={self._width}, height={self._height}, event={self._sync_event.is_set()})"
 
     def run(self) -> None:
         """
         Continuously sends encoded data from the input queue through the network.
         """
         while self.is_running():
-            encoded_data = self._input_queue.get()
+            try:
+                encoded_data = self._input_queue.get(block=False)
+            except queue.Empty:
+                time.sleep(0.001)
+                continue
+            self._sync_event.set()
             packet = VideoContainerDataPacketFactory.create_packet(self._width, self._height, encoded_data)
-            self._socket_writer.write_packet(packet)
-            self._event.set()
+            try:
+                self._socket_writer.write_packet(packet)
+            except ConnectionError:
+                pass
 
     def stop(self):
         super().stop()
-        self._event.set()
+        # Free waiters
+        self._sync_event.set()
 
 
 class AbstractPipeline(ABC):
@@ -149,6 +162,7 @@ class AbstractPipeline(ABC):
             for component, thread in zip(self.get_pipeline(), self._threads):
                 print(f"Joining thread for '{component}'")
                 thread.join()
+                print(f"Joined thread for '{component}'")
             self._threads = []
         else:
             raise RuntimeError("Pipeline did not started")
@@ -178,7 +192,7 @@ class CaptureEncodeNetworkPipeline(AbstractPipeline):
             self._capture_width,
             self._capture_height,
             self._capture_component.output_queue,  # join queues between
-            CaptureEncodeNetworkPipeline._get_default_encoder_strategy(4)
+            CaptureEncodeNetworkPipeline._get_default_encoder_strategy(1)
         )
         self._network_component = SocketWriterComponent(
             self._capture_width,
@@ -243,9 +257,6 @@ class SocketReaderComponent(Component):
 
             if isinstance(object_data, VideoData):
                 self.output_queue.put(object_data)
-            else:
-                # TODO handle different packets if sent here
-                raise ValueError
 
 
 class DecoderComponent(Component):
@@ -263,7 +274,11 @@ class DecoderComponent(Component):
 
     def run(self) -> None:
         while self.is_running():
-            video_data: VideoData = self._input_queue.get()
+            try:
+                video_data: VideoData = self._input_queue.get(block=False)
+            except queue.Empty:
+                time.sleep(0.025)
+                continue
             decoded_frame = self._decoder_strategy.get().decode_packet(video_data)
             self.output_queue.put((video_data, decoded_frame))
 

@@ -17,7 +17,11 @@ class MouseMoveCommand(Command):
 
     def execute(self, x: int, y: int):
         packet = MouseMovePacketFactory.create_packet(x, y)
-        self._writer.write_packet(packet)
+        try:
+            self._writer.write_packet(packet, False)
+        except ConnectionError:
+            # There is no connection, ignore
+            pass
 
 
 class MouseClickCommand(Command):
@@ -26,7 +30,11 @@ class MouseClickCommand(Command):
 
     def execute(self, x: int, y: int, button: MouseButton, state: ButtonState):
         packet = MouseClickPacketFactory.create_packet(x, y, button, state)
-        self._writer.write_packet(packet)
+        try:
+            self._writer.write_packet(packet, False)
+        except ConnectionError:
+            # There is no connection, ignore
+            pass
 
 
 class KeyboardEventCommand(Command):
@@ -35,4 +43,8 @@ class KeyboardEventCommand(Command):
 
     def execute(self, key_code: ASCIIEnum, state: ButtonState):
         packet = KeyboardEventPacketFactory.create_packet(key_code, state)
-        self._writer.write_packet(packet)
+        try:
+            self._writer.write_packet(packet, False)
+        except ConnectionError:
+            # There is no connection, ignore
+            pass

@@ -6,5 +6,5 @@ class SocketDataWriter:
     def __init__(self, connection: Connection):
         self._connection = connection
 
-    def write_packet(self, packet: Packet) -> None:
-        self._connection.write(packet.get_bytes())
+    def write_packet(self, packet: Packet, block=True) -> None:
+        self._connection.write(packet.get_bytes(), block)

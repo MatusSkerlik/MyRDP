@@ -1,4 +1,3 @@
-import zlib
 from abc import ABC, abstractmethod
 from enum import IntEnum
 from typing import List, Union, Optional, Any, Dict
@@ -15,13 +14,13 @@ class AbstractDecoderStrategy(ABC):
         pass
 
 
-class DefaultDecoder(AbstractDecoderStrategy):
+class DefaultDecoder:
     class FrameType(IntEnum):
         FULL_FRAME = 0x01
         DIFF_FRAME = 0x02
 
     def __init__(self):
-        self._last_frame: Union[None, np.ndarray] = None
+        self._last_frame: Union[None, cv2.UMat] = None
 
     def __str__(self):
         return f"DefaultDecoder()"
@@ -31,15 +30,10 @@ class DefaultDecoder(AbstractDecoderStrategy):
         height = video_data.get_height()
         frame_type = video_data.get_frame_type()
         data = video_data.get_data()
-        try:
-            frame = zlib.decompress(data)
-        except zlib.error as e:
-            if self._last_frame is not None:
-                return [self._last_frame]
-            else:
-                raise e
+
+        frame = data
         nframe = np.frombuffer(frame, dtype=np.uint8)
-        nframe = nframe.reshape((width, height, 3))
+        nframe = cv2.UMat(nframe.reshape((width, height, 3)))
 
         if frame_type == DefaultDecoder.FrameType.FULL_FRAME:
             self._last_frame = nframe
@@ -47,7 +41,7 @@ class DefaultDecoder(AbstractDecoderStrategy):
             nframe = cv2.add(self._last_frame, nframe)
         else:
             raise RuntimeError("invalid frame type or not previous frame available")
-        return [nframe]
+        return [nframe.get()]
 
 
 class DecoderStrategyBuilder:

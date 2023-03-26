@@ -4,6 +4,7 @@ from bandwidth import BandwidthMonitor, BandwidthStateMachine, BandwidthFormatte
 from command import MouseMoveCommand, MouseClickCommand, KeyboardEventCommand
 from connection import ReconnectingServerConnection
 from enums import MouseButton, ButtonState, ASCIIEnum
+from fps import FramesPerSecond
 from lock import AutoLockingValue
 from pipeline import ReadDecodePipeline
 from pread import SocketDataReader
@@ -11,13 +12,14 @@ from pwrite import SocketDataWriter
 
 
 class Server:
-    def __init__(self, host: str, port: int, width: int, height: int, fps: int) -> None:
+    def __init__(self, host: str, port: int, width: int, height: int, fps: int, caption: str = "Server") -> None:
         self._host = host
         self._port = port
 
         self._width = width
         self._height = height
         self._fps = fps
+        self._caption = caption
 
         self._running = AutoLockingValue(False)
         self._connection = ReconnectingServerConnection(host, port)
@@ -38,8 +40,10 @@ class Server:
         self._read_decode_pipeline.start()
 
         pygame.init()
-        clock = pygame.time.Clock()
         screen = pygame.display.set_mode((self._width, self._height), pygame.RESIZABLE)
+        pygame.display.set_caption(self._caption)
+        clock = pygame.time.Clock()
+        fps_pipeline = FramesPerSecond(60)
         font = pygame.font.Font(None, 30)
 
         while self._running.get():
@@ -70,13 +74,14 @@ class Server:
 
                 elif event.type == pygame.QUIT:
                     self.stop()
-                    break
 
             # Receive data object
             data = self._read_decode_pipeline.get()
 
             # If data from pipeline are available
             if data is not None:
+                fps_pipeline.tick()
+
                 screen.fill((0, 0, 0))
 
                 # Handle video data
@@ -110,16 +115,18 @@ class Server:
                 # Render frame
                 screen.blit(img_scaled, (x_offset, y_offset))
 
-                fps = clock.get_fps()
                 bandwidth = self._monitor.get_bandwidth()
-
-                fps_text = font.render(f"FPS: {fps:.2f}", True, (102, 255, 102))
+                fps_text = font.render(f"FPS: {clock.get_fps():.2f}", True, (102, 255, 102))
+                fps_pipeline_text = font.render(f"PFPS: {fps_pipeline.get_fps():.2f}", True, (102, 255, 102))
                 bandwidth_text = font.render(f"Bandwidth: {BandwidthFormatter.format(bandwidth)}", True,
                                              (102, 255, 102))
 
                 # Render FPS and bandwidth
                 screen.blit(fps_text, (self._width - fps_text.get_width() - 10, 10))
-                screen.blit(bandwidth_text, (self._width - bandwidth_text.get_width() - 10, fps_text.get_height() + 15))
+                screen.blit(fps_pipeline_text,
+                            (self._width - fps_pipeline_text.get_width() - 10, fps_text.get_height() + 15))
+                screen.blit(bandwidth_text, (self._width - bandwidth_text.get_width() - 10,
+                                             fps_pipeline_text.get_height() + fps_text.get_height() + 15))
 
                 # Render apply
                 pygame.display.flip()
