@@ -1,18 +1,51 @@
+from typing import Tuple
+
 import pygame
 
 from bandwidth import BandwidthMonitor, BandwidthStateMachine, BandwidthFormatter
 from command import MouseMoveCommand, MouseClickCommand, KeyboardEventCommand
-from connection import ReconnectingServerConnection
+from connection import AutoReconnectServer
 from enums import MouseButton, ButtonState, ASCIIEnum
-from fps import FramesPerSecond
+from fps import FrameRateCalculator
 from lock import AutoLockingValue
 from pipeline import ReadDecodePipeline
 from pread import SocketDataReader
 from pwrite import SocketDataWriter
+from render import TextBoxLayout
 
 
 class Server:
-    def __init__(self, host: str, port: int, width: int, height: int, fps: int, caption: str = "Server") -> None:
+    """
+    A class representing a server in a video streaming application.
+
+    This class is responsible for handling server-side operations of a
+    video streaming application. It receives encoded frames from a client,
+    decodes the frames, and displays the video. It also handles user input events
+    for stopping the streaming process, as well as mouse and keyboard events.
+
+    Attributes:
+        _host (str): The server's host address.
+        _port (int): The server's port number.
+        _width (int): The width of the pygame window.
+        _height (int): The height of the pygame window.
+        _fps (int): The desired frame rate for receiving and displaying the video.
+        _caption (str): The caption of the pygame window.
+        _running (AutoLockingValue): A boolean flag to indicate if the server is running.
+        _connection (AutoReconnectServer): The connection object for the server.
+        _socket_reader (SocketDataReader): The socket data reader object.
+        _socket_writer (SocketDataWriter): The socket data writer object.
+        _bandwidth_monitor (BandwidthMonitor): A bandwidth monitor object to track bandwidth usage.
+        _bandwidth_state_machine (BandwidthStateMachine): A state machine to manage bandwidth states.
+        _read_decode_pipeline (ReadDecodePipeline): The pipeline object for processing the video stream.
+    """
+
+    def __init__(self,
+                 host: str,
+                 port: int,
+                 width: int,
+                 height: int,
+                 fps: int,
+                 caption: str = "Server") -> None:
         self._host = host
         self._port = port
 
@@ -22,10 +55,10 @@ class Server:
         self._caption = caption
 
         self._running = AutoLockingValue(False)
-        self._connection = ReconnectingServerConnection(host, port)
+        self._connection = AutoReconnectServer(host, port)
         self._socket_reader = SocketDataReader(self._connection)
         self._socket_writer = SocketDataWriter(self._connection)
-        self._monitor = BandwidthMonitor()
+        self._bandwidth_monitor = BandwidthMonitor()
         self._bandwidth_state_machine = BandwidthStateMachine()
         self._read_decode_pipeline = ReadDecodePipeline(self._socket_reader)
 
@@ -43,7 +76,7 @@ class Server:
         screen = pygame.display.set_mode((self._width, self._height), pygame.RESIZABLE)
         pygame.display.set_caption(self._caption)
         clock = pygame.time.Clock()
-        fps_pipeline = FramesPerSecond(60)
+        pipe_frame_rate = FrameRateCalculator(60)
         font = pygame.font.Font(None, 30)
 
         while self._running.get():
@@ -80,9 +113,10 @@ class Server:
 
             # If data from pipeline are available
             if data is not None:
-                fps_pipeline.tick()
-
                 screen.fill((0, 0, 0))
+
+                # Track fps of pipeline
+                pipe_frame_rate.tick()
 
                 # Handle video data
                 video_data, frames = data
@@ -91,43 +125,31 @@ class Server:
                 data = video_data.get_data()
 
                 # Update minute bandwidth statistics
-                self._monitor.register_received_bytes(len(data))
+                self._bandwidth_monitor.register_received_bytes(len(data))
 
                 # Update bandwidth state machine
-                self._bandwidth_state_machine.update_state(self._monitor.get_bandwidth())
+                self._bandwidth_state_machine.update_state(self._bandwidth_monitor.get_bandwidth())
 
                 # Render only last frame
                 frame = frames[-1]
                 img = pygame.image.frombuffer(frame, (width, height), "RGB")
 
                 # Calculate new width and height while preserving aspect ratio
-                aspect_ratio = float(width) / float(height)
-                new_height = self._height
-                new_width = int(aspect_ratio * new_height)
-                if new_width > self._width:
-                    new_width = self._width
-                    new_height = int(new_width / aspect_ratio)
+                x_offset, y_offset, new_width, new_height = self._calculate_ratio(width, height)
 
+                # Rescale frame
                 img_scaled = pygame.transform.scale(img, (new_width, new_height))
-                x_offset = (self._width - new_width) // 2
-                y_offset = (self._height - new_height) // 2
 
                 # Render frame
                 screen.blit(img_scaled, (x_offset, y_offset))
 
-                bandwidth = self._monitor.get_bandwidth()
-                fps_text = font.render(f"FPS: {clock.get_fps():.2f}", True, (102, 255, 102))
-                fps_pipeline_text = font.render(f"PFPS: {fps_pipeline.get_fps():.2f}", True, (102, 255, 102))
-                bandwidth_text = font.render(f"Bandwidth: {BandwidthFormatter.format(bandwidth)}", True,
-                                             (102, 255, 102))
-
-                # Render FPS and bandwidth
-                screen.blit(fps_text, (self._width - fps_text.get_width() - 10, 10))
-                screen.blit(fps_pipeline_text,
-                            (self._width - fps_pipeline_text.get_width() - 10, fps_text.get_height() + 15))
-                screen.blit(bandwidth_text, (self._width - bandwidth_text.get_width() - 10,
-                                             fps_pipeline_text.get_height() + fps_text.get_height() + 15))
-
+                # Render FPS, Pipeline FPS and bandwidth
+                bandwidth = self._bandwidth_monitor.get_bandwidth()
+                text_layout = TextBoxLayout(screen, 0, 0, margin=8, font_size=32)
+                text_layout.add_line(f"FPS: {clock.get_fps():.2f}")
+                text_layout.add_line(f"Pipeline FPS: {pipe_frame_rate.get_fps():.2f}")
+                text_layout.add_line(f"Bandwidth: {BandwidthFormatter.format(bandwidth)}")
+                text_layout.render()
                 # Render apply
                 pygame.display.flip()
 
@@ -137,6 +159,21 @@ class Server:
         self._connection.stop()
         self._read_decode_pipeline.stop()
         self._running.set(False)
+
+    def _calculate_ratio(self, width: int, height: int) -> Tuple[int, int, int, int]:
+        aspect_ratio = float(width) / float(height)
+
+        new_height = self._height
+        new_width = int(aspect_ratio * new_height)
+
+        if new_width > self._width:
+            new_width = self._width
+            new_height = int(new_width / aspect_ratio)
+
+        x_offset = (self._width - new_width) // 2
+        y_offset = (self._height - new_height) // 2
+
+        return x_offset, y_offset, new_width, new_height
 
 
 HOST = "127.0.0.1"

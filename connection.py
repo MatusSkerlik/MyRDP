@@ -18,7 +18,18 @@ class Connection(ABC):
         pass
 
 
-class ReconnectingServerConnection(Connection):
+class AutoReconnectServer(Connection):
+    """
+    A server-side connection that automatically attempts to reconnect
+    when a client disconnects.
+
+    Attributes:
+        host (str): The server's hostname or IP address.
+        port (int): The server's port number.
+        backlog (int): The maximum number of queued connections.
+        retry_timeout (int): The time interval between connection attempts.
+    """
+
     def __init__(self, host, port, backlog=1, retry_timeout=1):
         self._host = host
         self._port = port
@@ -26,32 +37,30 @@ class ReconnectingServerConnection(Connection):
         self._retry_timeout = retry_timeout
         self._server_socket = socket.socket()
         self._client_socket: AutoLockingValue[socket.socket] = AutoLockingValue(socket.socket())
-        self._client_socket_set = threading.Event()
+        self._client_connected = threading.Event()
         self._accept_thread: Union[None, threading.Thread] = None
         self._running = AutoLockingValue(False)
 
     def write(self, data: bytes, block=True) -> None:
         if self._running.get():
             try:
-                if block:
-                    self._client_socket_set.wait()
-                with self._client_socket as sock:
-                    sock.sendall(data)
-                    return
+                if self._client_connected.wait(None if block else 0):
+                    with self._client_socket as sock:
+                        sock.sendall(data)
+                        return
             except socket.error as e:
-                self._client_socket_set.clear()
+                self._client_connected.clear()
                 print(f"Socket sendall error: {e}")
         raise ConnectionError
 
     def read(self, bufsize: int, block=True) -> Union[None, bytes]:
         if self._running.get():
             try:
-                if block:
-                    self._client_socket_set.wait()
-                with self._client_socket as sock:
-                    return sock.recv(bufsize)
+                if self._client_connected.wait(None if block else 0):
+                    with self._client_socket as sock:
+                        return sock.recv(bufsize)
             except socket.error as e:
-                self._client_socket_set.clear()
+                self._client_connected.clear()
                 print(f"Socket recv error: {e}")
         raise ConnectionError
 
@@ -75,7 +84,7 @@ class ReconnectingServerConnection(Connection):
         self._accept_thread.join()
         self._accept_thread = None
         # Unblock all waiters
-        self._client_socket_set.set()
+        self._client_connected.set()
 
     def _bind(self):
         try:
@@ -91,12 +100,11 @@ class ReconnectingServerConnection(Connection):
 
     def _accept(self):
         while self._running.get():
-            if not self._client_socket_set.is_set():
+            if not self._client_connected.is_set():
                 try:
-                    print("Listening for new connection")
                     client_socket, client_address = self._server_socket.accept()
                     self._client_socket: AutoLockingValue[Union[None, socket.socket]] = AutoLockingValue(client_socket)
-                    self._client_socket_set.set()
+                    self._client_connected.set()
                     print(f"Connection from {client_address}")
                 except socket.error as e:
                     print(f"Accept error: {e}")
@@ -104,38 +112,46 @@ class ReconnectingServerConnection(Connection):
                 time.sleep(self._retry_timeout)
 
 
-class ReconnectingClientConnection(Connection):
+class AutoReconnectClient(Connection):
+    """
+    A client-side connection that automatically attempts to reconnect
+    to the server when disconnected.
+
+    Attributes:
+        host (str): The server's hostname or IP address.
+        port (int): The server's port number.
+        retry_interval (int): The time interval between reconnection attempts.
+    """
+
     def __init__(self, host, port, retry_interval=1):
         self._host = host
         self._port = port
         self._retry_interval = retry_interval
         self._server_socket: AutoLockingValue[socket.socket] = AutoLockingValue(socket.socket())
-        self._server_socket_set = threading.Event()
+        self._server_connected = threading.Event()
         self._connect_thread: Union[None, threading.Thread] = None
         self._running = AutoLockingValue(False)
 
     def write(self, data: bytes, block=True) -> None:
         if self._running.get():
             try:
-                if block:
-                    self._server_socket_set.wait()
-                with self._server_socket as sock:
-                    sock.sendall(data)
-                    return
+                if self._server_connected.wait(None if block else 0):
+                    with self._server_socket as sock:
+                        sock.sendall(data)
+                        return
             except socket.error as e:
-                self._server_socket_set.clear()
+                self._server_connected.clear()
                 print(f"Socket sendall error: {e}")
         raise ConnectionError
 
     def read(self, bufsize: int, block=True) -> Union[None, bytes]:
         if self._running.get():
             try:
-                if block:
-                    self._server_socket_set.wait()
-                with self._server_socket as sock:
-                    return sock.recv(bufsize)
+                if self._server_connected.wait(None if block else 0):
+                    with self._server_socket as sock:
+                        return sock.recv(bufsize)
             except socket.error as e:
-                self._server_socket_set.clear()
+                self._server_connected.clear()
                 print(f"Socket recv error: {e}")
         raise ConnectionError
 
@@ -152,22 +168,25 @@ class ReconnectingClientConnection(Connection):
     def stop(self):
         self._running.set(False)
 
-        # Raise throw in thread if connect is called
+        # Raise throw in _connect method
         self._server_socket.get().close()
-        # Unblock all waiters
-        self._server_socket_set.set()
+
         # Finalize
         self._connect_thread.join()
+        self._connect_thread = None
+
+        # Unblock all waiters
+        self._server_connected.set()
 
     def _connect(self):
         while self._running.get():
-            if not self._server_socket_set.is_set():
+            if not self._server_connected.is_set():
                 try:
                     self._server_socket: AutoLockingValue[Union[None, socket.socket]] = AutoLockingValue(
                         socket.socket(socket.AF_INET, socket.SOCK_STREAM))
                     self._server_socket.get().settimeout(self._retry_interval)
                     self._server_socket.get().connect((self._host, self._port))
-                    self._server_socket_set.set()
+                    self._server_connected.set()
                     print(f"Connected to {self._host}:{self._port}")
                 except socket.error as e:
                     print(f"Connect error: {e}")

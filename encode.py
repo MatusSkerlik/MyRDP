@@ -1,3 +1,4 @@
+import zlib
 from abc import ABC, abstractmethod
 from enum import IntEnum
 from typing import Optional, Any, Dict, Union
@@ -39,7 +40,7 @@ class DefaultEncoder:
         try:
             if self._last_frame is None or self._frame_count % self._fps == 0:
                 self._frame_count = 1
-                compressed_frame = nframe.get().tobytes()
+                compressed_frame = zlib.compress(nframe.get().tobytes(), level=1)
                 packet = VideoFrameDataPacketFactory.create_packet(DefaultEncoder.ID,
                                                                    DefaultEncoder.FrameType.FULL_FRAME,
                                                                    compressed_frame)
@@ -50,7 +51,7 @@ class DefaultEncoder:
                 mask = cv2.cvtColor(diff, cv2.COLOR_RGB2GRAY)
                 _, mask = cv2.threshold(mask, 1, 255, cv2.THRESH_BINARY)
                 diff_data = cv2.bitwise_and(self._last_frame, nframe, mask=mask)
-                compressed_frame = diff_data.get().tobytes()
+                compressed_frame = zlib.compress(diff_data.get().tobytes(), level=1)
                 packet = VideoFrameDataPacketFactory.create_packet(DefaultEncoder.ID,
                                                                    DefaultEncoder.FrameType.DIFF_FRAME,
                                                                    compressed_frame)

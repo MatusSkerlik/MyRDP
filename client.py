@@ -1,29 +1,41 @@
 import pygame
 from pygame import QUIT
 
-from connection import ReconnectingClientConnection
+from connection import AutoReconnectClient
 from lock import AutoLockingValue
-from pipeline import EncoderComponent, CaptureComponent, SocketWriterComponent, CaptureEncodeNetworkPipeline
+from pipeline import CaptureEncodeSendPipeline
 from pread import SocketDataReader
 from pwrite import SocketDataWriter
 
 
 class Client:
-    def __init__(self, host: str, port: int, width: int, height: int, fps: int, title: str = "Client"):
-        """
-        The Client class sets up the capture, encoding, and networking pipeline for streaming
-        screen captures to a remote server.
+    """
+    A class representing a client in a video streaming application.
 
-        Attributes:
-            width (int): The width of the captured screen.
-            height (int): The height of the captured screen.
-            fps (int): The desired frame rate of the captured screen.
-            socket (socket.socket): The TCP socket used for communication with the server.
-            pipeline_running (bool): Flag indicating if the pipeline is running.
-            capture_component (CaptureComponent): The screen capture component of the pipeline.
-            encoder_component (EncoderComponent): The video encoder component of the pipeline.
-            network_component (SocketWriterComponent): The networking component of the pipeline.
-        """
+    This class is responsible for handling the client-side operations of a
+    video streaming application. It captures the screen, encodes the captured
+    frames, and sends the encoded frames to a server. It also handles user
+    input events for stopping the streaming process.
+
+    Attributes:
+        _title (str): The title of the pygame window.
+        _width (int): The width of the pygame window.
+        _height (int): The height of the pygame window.
+        _fps (int): The desired frame rate for capturing and displaying the video.
+        _running (AutoLockingValue): A boolean flag to indicate if the client is running.
+        _connection (AutoReconnectClient): The connection object for the client.
+        _socket_reader (SocketDataReader): The socket data reader object.
+        _socket_writer (SocketDataWriter): The socket data writer object.
+        _pipeline (CaptureEncodeSendPipeline): The pipeline object for processing the video stream.
+    """
+
+    def __init__(self,
+                 host: str,
+                 port: int,
+                 width: int,
+                 height: int,
+                 fps: int,
+                 title: str = "Client"):
         self._title = title
         self._width = width
         self._height = height
@@ -31,10 +43,10 @@ class Client:
         self._fps = fps
         self._running = AutoLockingValue(False)
 
-        self._connection = ReconnectingClientConnection(host, port)
+        self._connection = AutoReconnectClient(host, port)
         self._socket_reader = SocketDataReader(self._connection)
         self._socket_writer = SocketDataWriter(self._connection)
-        self._pipeline = CaptureEncodeNetworkPipeline(self._socket_writer, fps)
+        self._pipeline = CaptureEncodeSendPipeline(fps, self._socket_writer)
 
     def is_running(self):
         return self._running.get()

@@ -8,10 +8,16 @@ from enums import PacketType
 
 
 class InvalidPacketType(Exception):
-    pass
+    """
+       Raised when the packet type is unexpected or unknown.
+       """
+
+    def __init__(self, exception: Exception):
+        super().__init__(f"Unexpected packet type: {exception}")
 
 
 class BytesReader:
+
     def __init__(self, data: bytes):
         self.buffer = io.BytesIO(data)
 
@@ -100,9 +106,9 @@ class SocketDataReader(BytesReader):
         try:
             try:
                 packet_type = PacketType(self.read_byte())
-            except ValueError:
+            except ValueError as e:
                 # This error indicates, that reset should be made
-                raise InvalidPacketType
+                raise InvalidPacketType(e)
 
             if packet_type == PacketType.VIDEO_DATA:
                 width = self.read_int()

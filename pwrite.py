@@ -3,6 +3,13 @@ from packet import Packet
 
 
 class SocketDataWriter:
+    """
+    A class for writing data packets to a socket connection.
+
+    Attributes:
+        _connection (Connection): The connection object for the socket.
+    """
+
     def __init__(self, connection: Connection):
         self._connection = connection
 

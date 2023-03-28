@@ -1,3 +1,4 @@
+import zlib
 from abc import ABC, abstractmethod
 from enum import IntEnum
 from typing import List, Union, Optional, Any, Dict
@@ -31,7 +32,12 @@ class DefaultDecoder:
         frame_type = video_data.get_frame_type()
         data = video_data.get_data()
 
-        frame = data
+        try:
+            frame = zlib.decompress(data)
+        except zlib.error as e:
+            # TODO why is zlib.error happening and how to prevent it
+            print(e)
+            return [self._last_frame]
         nframe = np.frombuffer(frame, dtype=np.uint8)
         nframe = cv2.UMat(nframe.reshape((width, height, 3)))
 
@@ -45,6 +51,16 @@ class DefaultDecoder:
 
 
 class DecoderStrategyBuilder:
+    """
+    A builder class for creating EncoderStrategy objects.
+
+    This builder class allows you to easily create EncoderStrategy objects by
+    specifying the strategy type and any options needed for the strategy.
+
+    Example:
+        builder = DecoderStrategyBuilder()
+        decoder_strategy = builder.set_strategy_type("default").build()
+    """
 
     def __init__(self) -> None:
         self._strategy_type: Optional[str] = None
@@ -58,12 +74,12 @@ class DecoderStrategyBuilder:
         self._options[key] = value
         return self
 
-    def build(self) -> Union[None, AbstractDecoderStrategy]:
+    def build(self) -> AbstractDecoderStrategy:
         if not self._strategy_type:
-            return None
+            raise ValueError
 
         if self._strategy_type.lower() == "default":
             return DefaultDecoder()
 
         # Add other strategy types here
-        return None
+        raise NotImplementedError
