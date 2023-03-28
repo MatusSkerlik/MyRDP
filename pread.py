@@ -1,6 +1,6 @@
 import io
 import struct
-from typing import Union
+from typing import Tuple
 
 from connection import Connection
 from dao import VideoData, AbstractDataObject
@@ -54,7 +54,7 @@ class SocketDataReader(BytesReader):
         Reads data from the socket and appends it to the buffer.
         Raises a ConnectionError if the connection is closed.
         """
-        data = self._connection.read(self._buffer_size)
+        data = self._connection.read(self._buffer_size, block=True)
 
         current_pos = self.buffer.tell()
         self.buffer.seek(0, io.SEEK_END)
@@ -75,7 +75,7 @@ class SocketDataReader(BytesReader):
         """
         Ensures that the buffer has at least `size` bytes of data.
         """
-        while self.buffer.getbuffer().nbytes < size:
+        while (self.buffer.getbuffer().nbytes - self.buffer.tell()) < size:
             self._fill_buffer()
 
     def read_int(self) -> int:
@@ -102,31 +102,23 @@ class SocketDataReader(BytesReader):
         self._ensure_data(length)
         return super().read_bytes(length)
 
-    def read_packet(self) -> Union[None, AbstractDataObject]:
-        try:
-            try:
-                packet_type = PacketType(self.read_byte())
-            except ValueError as e:
-                # This error indicates, that reset should be made
-                raise InvalidPacketType(e)
+    def read_packet(self) -> Tuple[PacketType, AbstractDataObject]:
+        packet_type = PacketType(self.read_byte())
 
-            if packet_type == PacketType.VIDEO_DATA:
-                width = self.read_int()
-                height = self.read_int()
-                frame_packet = self.read_bytes()
+        if packet_type == PacketType.VIDEO_DATA:
+            width = self.read_int()
+            height = self.read_int()
+            frame_packet = self.read_bytes()
 
-                # Seek to the start of frame packet, -4 represents byte array size
-                self.buffer.seek(self.buffer.tell() - len(frame_packet))
+            # Seek to the start of frame packet, -4 represents byte array size
+            self.buffer.seek(self.buffer.tell() - len(frame_packet))
 
-                encoder_type = self.read_int()
-                frame_type = self.read_int()
-                encoded_frame = self.read_bytes()
+            encoder_type = self.read_int()
+            frame_type = self.read_int()
+            encoded_frame = self.read_bytes()
 
-                self._flush_read_data()
+            self._flush_read_data()
 
-                return VideoData(width, height, encoder_type, frame_type, encoded_frame)
+            return packet_type, VideoData(width, height, encoder_type, frame_type, encoded_frame)
 
-            raise NotImplementedError
-        except ConnectionError:
-            # Connection lost, reset buffer
-            self.buffer = io.BytesIO()
+        raise NotImplementedError

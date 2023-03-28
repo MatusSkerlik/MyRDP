@@ -10,6 +10,7 @@ from fps import FrameRateCalculator
 from lock import AutoLockingValue
 from pipeline import ReadDecodePipeline
 from pread import SocketDataReader
+from processor import StreamPacketProcessor
 from pwrite import SocketDataWriter
 from render import FlexboxLayout, TextLayout
 
@@ -58,9 +59,10 @@ class Server:
         self._connection = AutoReconnectServer(host, port)
         self._socket_reader = SocketDataReader(self._connection)
         self._socket_writer = SocketDataWriter(self._connection)
+        self._stream_packet_processor = StreamPacketProcessor(self._socket_reader, self._socket_writer)
+        self._read_decode_pipeline = ReadDecodePipeline(self._stream_packet_processor)
         self._bandwidth_monitor = BandwidthMonitor()
         self._bandwidth_state_machine = BandwidthStateMachine()
-        self._read_decode_pipeline = ReadDecodePipeline(self._socket_reader)
 
     def is_running(self):
         return self._running.get()
@@ -70,6 +72,7 @@ class Server:
             raise RuntimeError("The 'run' method can only be called once")
         self._running.set(True)
         self._connection.start()
+        self._stream_packet_processor.start()
         self._read_decode_pipeline.start()
 
         pygame.init()
@@ -157,6 +160,7 @@ class Server:
 
     def stop(self) -> None:
         self._connection.stop()
+        self._stream_packet_processor.stop()
         self._read_decode_pipeline.stop()
         self._running.set(False)
 
@@ -177,7 +181,7 @@ class Server:
 
 
 HOST = "127.0.0.1"
-PORT = 8085
+PORT = 8086
 FPS = 45
 
 if __name__ == "__main__":

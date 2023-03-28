@@ -4,6 +4,34 @@ from typing import TypeVar, Generic
 T = TypeVar("T")
 
 
+class AutoLockingProxy:
+    """
+        A class that acts as a proxy for other objects and provides automatic locking and unlocking of the objects.
+
+        This class intercepts attribute access using the __getattribute__ and __setattr__ methods to provide automatic locking
+        and unlocking of the object attributes. If an attribute is an instance of AutoLockingValue, this class will automatically
+        acquire and release a lock when accessing or modifying the attribute value.
+    """
+
+    def __getattribute__(self, item):
+        attr = super().__getattribute__(item)
+        if isinstance(attr, AutoLockingValue):
+            return attr.get()
+        else:
+            return attr
+
+    def __setattr__(self, key, value):
+        try:
+            attr = super().__getattribute__(key)
+            if isinstance(attr, AutoLockingValue):
+                attr.set(value)
+                return
+        except AttributeError:
+            pass
+
+        super().__setattr__(key, value)
+
+
 class AutoLockingValue(Generic[T]):
     """
     A thread-safe class for managing a value with automatic locking and unlocking.
@@ -47,16 +75,3 @@ class AutoLockingValue(Generic[T]):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self._lock.release()
-
-    # Implement __getattr__
-    def __getattr__(self, name):
-        if name == "value":
-            return self.get()
-        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
-
-    # Implement __setattr__
-    def __setattr__(self, name, value):
-        if name == "value":
-            self.set(value)
-        else:
-            super().__setattr__(name, value)

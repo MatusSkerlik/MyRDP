@@ -11,8 +11,9 @@ from capture import AbstractCaptureStrategy, CaptureStrategyBuilder
 from dao import VideoContainerDataPacketFactory, VideoData
 from decode import DecoderStrategyBuilder, AbstractDecoderStrategy
 from encode import AbstractEncoderStrategy, EncoderStrategyBuilder
+from enums import PacketType
 from lock import AutoLockingValue
-from pread import SocketDataReader, InvalidPacketType
+from processor import StreamPacketProcessor
 from pwrite import SocketDataWriter
 
 SLEEP_TIME = 1 / 120
@@ -323,32 +324,26 @@ class _StreamReaderComponent(Component):
     Attributes:
         output_queue (queue.Queue): The queue to store the received video data.
         _running (AutoLockingValue): A thread-safe boolean flag indicating the running state of the component.
-        _socket_reader (SocketDataReader): The socket data reader used for reading video data from a socket.
+        _stream_packet_processor (StreamPacketProcessor)
     """
 
-    def __init__(self, socket_reader: SocketDataReader):
+    def __init__(self, stream_packet_processor: StreamPacketProcessor):
         super().__init__()
 
         self.output_queue = queue.Queue(maxsize=1)
         self._running = AutoLockingValue(True)
-        self._socket_reader = socket_reader
+        self._stream_packet_processor = stream_packet_processor
 
     def __str__(self):
         return f"SocketReaderComponent()"
 
     def run(self) -> None:
         while self.is_running():
-            try:
-                object_data = self._socket_reader.read_packet()
-
-                if object_data is None:
-                    continue
-
-                if isinstance(object_data, VideoData):
-                    self.output_queue.put(object_data)
-
-            except InvalidPacketType as e:
-                print(f"Invalid packet type: {e}")
+            video_data = self._stream_packet_processor.get_packet_data(PacketType.VIDEO_DATA)
+            if video_data:
+                self.output_queue.put(video_data)
+            else:
+                time.sleep(0.01)
 
 
 class _DecoderComponent(Component):
@@ -405,9 +400,9 @@ class ReadDecodePipeline(AbstractPipeline):
         _decoder_component (_DecoderComponent): The component responsible for decoding the video data.
     """
 
-    def __init__(self, socket_reader: SocketDataReader):
+    def __init__(self, stream_packet_processor: StreamPacketProcessor):
         super().__init__()
-        self._socket_reader_component = _StreamReaderComponent(socket_reader)
+        self._socket_reader_component = _StreamReaderComponent(stream_packet_processor)
         self._decoder_component = _DecoderComponent(
             self._socket_reader_component.output_queue,
             self._get_default_decoder_strategy()
