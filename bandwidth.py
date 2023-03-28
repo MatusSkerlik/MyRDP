@@ -1,7 +1,6 @@
 import time
 from collections import deque
 from enum import EnumMeta, Enum
-from threading import Lock
 from typing import Callable
 
 from enums import Resolution
@@ -13,9 +12,8 @@ class BandwidthMonitor:
 
     Attributes:
         window_size (int): The size of the moving median window in seconds.
-        bytes_received (deque): A deque to store the number of bytes received.
-        timestamps (deque): A deque to store the timestamps of received bytes.
-        lock (Lock): A threading lock for synchronization.
+        _bytes_received (deque): A deque to store the number of bytes received.
+        _timestamps (deque): A deque to store the timestamps of received bytes.
     """
 
     def __init__(self, window_size: int = 60) -> None:
@@ -25,10 +23,9 @@ class BandwidthMonitor:
         Args:
             window_size (int): The size of the moving median window in seconds. Default is 60 seconds.
         """
-        self.window_size = window_size
-        self.bytes_received = deque()
-        self.timestamps = deque()
-        self.lock = Lock()
+        self._window_size = window_size
+        self._bytes_received = deque()
+        self._timestamps = deque()
 
     def register_received_bytes(self, received_bytes: int) -> None:
         """
@@ -37,14 +34,13 @@ class BandwidthMonitor:
         Args:
             received_bytes (int): The number of bytes received.
         """
-        with self.lock:
-            current_time = time.time()
-            self.bytes_received.append(received_bytes)
-            self.timestamps.append(current_time)
+        current_time = time.time()
+        self._bytes_received.append(received_bytes)
+        self._timestamps.append(current_time)
 
-            while len(self.timestamps) > 0 and current_time - self.timestamps[0] > self.window_size:
-                self.timestamps.popleft()
-                self.bytes_received.popleft()
+        while len(self._timestamps) > 0 and current_time - self._timestamps[0] > self._window_size:
+            self._timestamps.popleft()
+            self._bytes_received.popleft()
 
     def get_bandwidth(self) -> int:
         """
@@ -53,10 +49,9 @@ class BandwidthMonitor:
         Returns:
             float: The bandwidth in bytes per second.
         """
-        with self.lock:
-            elapsed_time = self.timestamps[-1] - self.timestamps[0] if len(self.timestamps) > 1 else 1
-            total_bytes_received = sum(self.bytes_received)
-            return int(total_bytes_received / elapsed_time)
+        elapsed_time = self._timestamps[-1] - self._timestamps[0] if len(self._timestamps) > 1 else 1
+        total_bytes_received = sum(self._bytes_received)
+        return int(total_bytes_received / elapsed_time)
 
 
 class BandwidthCategoryMeta(EnumMeta):

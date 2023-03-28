@@ -3,8 +3,8 @@ import struct
 
 
 class Packet:
+
     def __init__(self) -> None:
-        """Initialize a new Packet object with an empty buffer."""
         self.buffer = io.BytesIO()
 
     def add_int(self, value: int) -> None:

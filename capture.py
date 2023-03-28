@@ -3,7 +3,7 @@ from typing import Optional, Any, Dict
 
 from mss import mss
 
-from timer import FrameTimer
+from fps import FrameRateLimiter
 
 
 class AbstractCaptureStrategy(ABC):
@@ -23,35 +23,31 @@ class AbstractCaptureStrategy(ABC):
 class MSSCaptureStrategy(AbstractCaptureStrategy):
     """
     A screen capture strategy that uses the MSS library to capture the screen of the first
-    monitor and resizes the captured image according to the specified dimensions.
+    monitor.
 
     Attributes:
-        width (int): The target width of the resized image.
-        height (int): The target height of the resized image.
-        sct (mss.mss): The MSS object used for screen capturing.
+        _sct (mss.mss): The MSS object used for screen capturing.
     """
 
     def __init__(self, fps: int):
-        self.fps = fps
-        self.frame_timer = FrameTimer(fps)
-
-        self.sct = mss()
+        self._frame_rate_limiter = FrameRateLimiter(fps)
+        self._sct = mss()
 
     def get_monitor_width(self) -> int:
-        return self.sct.monitors[1].get("width")
+        return self._sct.monitors[1].get("width")
 
     def get_monitor_height(self) -> int:
-        return self.sct.monitors[1].get("height")
+        return self._sct.monitors[1].get("height")
 
     def capture_screen(self) -> bytes:
         # sleep for the required time to match fps
-        self.frame_timer.tick()
+        self._frame_rate_limiter.tick()
 
         # Get the dimensions of the first monitor
-        monitor = self.sct.monitors[1]
+        monitor = self._sct.monitors[1]
 
         # Capture the screen
-        screen_shot = self.sct.grab(monitor)
+        screen_shot = self._sct.grab(monitor)
 
         # Convert the resized image to a bytes and return
         return screen_shot.rgb
@@ -67,8 +63,7 @@ class CaptureStrategyBuilder:
     Example:
         builder = CaptureStrategyBuilder()
         capture_strategy = (builder.set_strategy_type("mss")
-                                  .set_option("width", 1280)
-                                  .set_option("height", 720)
+                                  .set_option("fps", 30)
                                   .build())
     """
 
@@ -93,4 +88,4 @@ class CaptureStrategyBuilder:
             return MSSCaptureStrategy(fps)
 
         # Add other strategy types here
-        return None
+        raise NotImplementedError
