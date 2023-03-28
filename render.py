@@ -1,79 +1,135 @@
+from abc import ABC, abstractmethod
+from typing import List, Tuple
+
 import pygame
 
 
-class TextBoxLayout:
-    ALIGNMENTS = {
-        "topleft": lambda box_rect, text_rect: (box_rect.left, box_rect.top),
-        "topcenter": lambda box_rect, text_rect: (box_rect.centerx - text_rect.width // 2, box_rect.top),
-        "topright": lambda box_rect, text_rect: (box_rect.right - text_rect.width, box_rect.top),
-        "centerleft": lambda box_rect, text_rect: (box_rect.left, box_rect.centery - text_rect.height // 2),
-        "centerright": lambda box_rect, text_rect: (
-            box_rect.right - text_rect.width, box_rect.centery - text_rect.height // 2),
-        "center": lambda box_rect, text_rect: (
-            box_rect.centerx - text_rect.width // 2, box_rect.centery - text_rect.height // 2),
-        "bottomleft": lambda box_rect, text_rect: (box_rect.left, box_rect.bottom - text_rect.height),
-        "bottomcenter": lambda box_rect, text_rect: (
-            box_rect.centerx - text_rect.width // 2, box_rect.bottom - text_rect.height),
-        "bottomright": lambda box_rect, text_rect: (
-            box_rect.right - text_rect.width, box_rect.bottom - text_rect.height),
-    }
+class Layout(ABC):
 
-    def __init__(self,
-                 surface,
-                 x: int,
-                 y: int,
-                 width=None,
-                 height=None,
-                 align="topleft",
-                 font=None,
-                 font_size=20,
-                 line_spacing=4,
-                 margin=10):
-        self._surface = surface
-        self._x = x
-        self._y = y
-        self._width = width
-        self._height = height
-        self._align = align
+    def __init__(self, position: Tuple[int, int], size: Tuple[int, int]) -> None:
+        super().__init__()
+
+        self.position = position
+        self.size = size
+
+    @abstractmethod
+    def render(self, screen):
+        pass
+
+
+class FlexboxLayout(Layout):
+    def __init__(self, position: Tuple[int, int] = (0, 0), size: Tuple[int, int] = (0, 0), mode: str = 'row',
+                 align_items: str = 'start', justify_content: str = 'start'):
+        super().__init__(position, size)
+
+        self._children: List[Layout] = []
+        self._mode = mode
+        self._align_items = align_items
+        self._justify_content = justify_content
+
+    def add_child(self, child: Layout):
+        self._children.append(child)
+
+    def render(self, screen):
+        if self.size[0] == 0 or self.size[1] == 0:
+            self._fit_children()
+
+        if self._mode == 'row':
+            self._layout_row()
+        elif self._mode == 'column':
+            self._layout_column()
+
+        for child in self._children:
+            child.render(screen)
+
+    def _fit_children(self):
+        if not self._children:
+            return
+
+        if self._mode == 'row':
+            self._fit_children_row()
+        elif self._mode == 'column':
+            self._fit_children_column()
+
+    def _fit_children_row(self):
+        total_width = sum(child.size[0] for child in self._children)
+        max_height = max(child.size[1] for child in self._children)
+        self.size = (total_width, max_height)
+
+    def _fit_children_column(self):
+        max_width = max(child.size[0] for child in self._children)
+        total_height = sum(child.size[1] for child in self._children)
+        self.size = (max_width, total_height)
+
+    def _layout_row(self):
+        spacing = 0
+        x_offset = self.position[0]
+        total_width = sum(child.size[0] for child in self._children)
+
+        if self._justify_content == 'end':
+            x_offset += self.size[0] - total_width
+        elif self._justify_content == 'center':
+            x_offset += (self.size[0] - total_width) / 2
+        elif self._justify_content == 'space-between':
+            spacing = (self.size[0] - total_width) / (len(self._children) - 1) if len(self._children) > 1 else 0
+        elif self._justify_content == 'space-around':
+            spacing = (self.size[0] - total_width) / len(self._children) if len(self._children) > 0 else 0
+            x_offset += spacing / 2
+
+        for child in self._children:
+            y_offset = self.position[1]
+
+            if self._align_items == 'end':
+                y_offset += self.size[1] - child.size[1]
+            elif self._align_items == 'center':
+                y_offset += (self.size[1] - child.size[1]) / 2
+
+            # Set child position
+            child.position = (x_offset, y_offset)
+
+            # Update x coordinate for next child
+            x_offset += child.size[0] + spacing
+
+    def _layout_column(self):
+        spacing = 0
+        y_offset = self.position[1]
+        total_height = sum(child.size[1] for child in self._children)
+
+        if self._justify_content == 'end':
+            y_offset += self.size[1] - total_height
+        elif self._justify_content == 'center':
+            y_offset += (self.size[1] - total_height) / 2
+        elif self._justify_content == 'space-between':
+            spacing = (self.size[1] - total_height) / (len(self._children) - 1) if len(self._children) > 1 else 0
+        elif self._justify_content == 'space-around':
+            spacing = (self.size[1] - total_height) / len(self._children) if len(self._children) > 0 else 0
+            y_offset += spacing / 2
+
+        for child in self._children:
+            x_offset = self.position[0]
+
+            if self._align_items == 'end':
+                x_offset += self.size[0] - child.size[0]
+            elif self._align_items == 'center':
+                x_offset += (self.size[0] - child.size[0]) / 2
+
+            # Set child position
+            child.position = (x_offset, y_offset)
+
+            # Update y coordinate for next child
+            y_offset += child.size[1] + spacing
+
+
+class TextLayout(Layout):
+    def __init__(self, text: str,
+                 font: pygame.font.Font = None, font_size=16, color: Tuple[int, int, int] = (255, 255, 255),
+                 position: Tuple[int, int] = (0, 0)):
+        self._text = text
         self._font = font or pygame.font.Font(None, font_size)
-        self._line_spacing = line_spacing
-        self._margin = margin
-        self._lines = []
+        self._color = color
+        self._surface = self._font.render(self._text, True, self._color)
 
-    def _fit_text_to_box(self):
-        max_width = 0
-        total_height = 0
-        for line in self._lines:
-            text_surface = self._font.render(line.text, True, line.color)
-            max_width = max(max_width, text_surface.get_width())
-            total_height += text_surface.get_height() + self._line_spacing
-        total_height -= self._line_spacing
+        super().__init__(position, (self._surface.get_width(), self._surface.get_height()))
 
-        if self._width is None:
-            self._width = max_width + 2 * self._margin
-        if self._height is None:
-            self._height = total_height + 2 * self._margin
-
-        x, y = self.ALIGNMENTS[self._align](pygame.Rect(self._x, self._y, self._width, self._height),
-                                            pygame.Rect(0, 0, max_width, total_height))
-        y += self._margin
-
-        for line in self._lines:
-            text_surface = self._font.render(line.text, True, line.color)
-            line.rect = text_surface.get_rect(topleft=(x, y))
-            y += text_surface.get_height() + self._line_spacing
-
-    def add_line(self, text, color=(255, 255, 255)):
-        self._lines.append(Line(text, color))
-
-    def render(self):
-        self._fit_text_to_box()
-        for line in self._lines:
-            self._surface.blit(self._font.render(line.text, True, line.color), line.rect)
-
-
-class Line:
-    def __init__(self, text, color):
-        self.text = text
-        self.color = color
-        self.rect = None
+    def render(self, screen):
+        screen.blit(self._surface, self.position)

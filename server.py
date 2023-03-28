@@ -11,7 +11,7 @@ from lock import AutoLockingValue
 from pipeline import ReadDecodePipeline
 from pread import SocketDataReader
 from pwrite import SocketDataWriter
-from render import TextBoxLayout
+from render import FlexboxLayout, TextLayout
 
 
 class Server:
@@ -76,8 +76,7 @@ class Server:
         screen = pygame.display.set_mode((self._width, self._height), pygame.RESIZABLE)
         pygame.display.set_caption(self._caption)
         clock = pygame.time.Clock()
-        pipe_frame_rate = FrameRateCalculator(60)
-        font = pygame.font.Font(None, 30)
+        pipe_frame_rate = FrameRateCalculator(1)
 
         while self._running.get():
             clock.tick(self._fps)
@@ -145,11 +144,12 @@ class Server:
 
                 # Render FPS, Pipeline FPS and bandwidth
                 bandwidth = self._bandwidth_monitor.get_bandwidth()
-                text_layout = TextBoxLayout(screen, 0, 0, margin=8, font_size=32)
-                text_layout.add_line(f"FPS: {clock.get_fps():.2f}")
-                text_layout.add_line(f"Pipeline FPS: {pipe_frame_rate.get_fps():.2f}")
-                text_layout.add_line(f"Bandwidth: {BandwidthFormatter.format(bandwidth)}")
-                text_layout.render()
+                layout = FlexboxLayout(mode="column", align_items="start")
+                layout.add_child(TextLayout(f"FPS: {clock.get_fps():.2f}", font_size=20))
+                layout.add_child(TextLayout(f"Pipeline FPS: {pipe_frame_rate.get_fps():.2f}", font_size=20))
+                layout.add_child(TextLayout(f"Bandwidth: {BandwidthFormatter.format(bandwidth)}", font_size=20))
+                layout.render(screen)
+
                 # Render apply
                 pygame.display.flip()
 
@@ -178,7 +178,7 @@ class Server:
 
 HOST = "127.0.0.1"
 PORT = 8085
-FPS = 25
+FPS = 45
 
 if __name__ == "__main__":
     server = Server(HOST, PORT, 1366, 720, FPS)
