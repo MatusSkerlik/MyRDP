@@ -75,7 +75,7 @@ class SocketDataReader(BytesReader):
         """
         Ensures that the buffer has at least `size` bytes of data.
         """
-        while self.buffer.getbuffer().nbytes < size:
+        while (self.buffer.getbuffer().nbytes - self.buffer.tell()) < size:
             self._fill_buffer()
 
     def read_int(self) -> int:
@@ -104,11 +104,7 @@ class SocketDataReader(BytesReader):
 
     def read_packet(self) -> Union[None, AbstractDataObject]:
         try:
-            try:
-                packet_type = PacketType(self.read_byte())
-            except ValueError as e:
-                # This error indicates, that reset should be made
-                raise InvalidPacketType(e)
+            packet_type = PacketType(self.read_byte())
 
             if packet_type == PacketType.VIDEO_DATA:
                 width = self.read_int()
@@ -127,6 +123,7 @@ class SocketDataReader(BytesReader):
                 return VideoData(width, height, encoder_type, frame_type, encoded_frame)
 
             raise NotImplementedError
+
         except ConnectionError:
             # Connection lost, reset buffer
             self.buffer = io.BytesIO()
