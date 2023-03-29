@@ -32,11 +32,11 @@ class AutoLockingValue(Generic[T]):
         self._value: T = value
         self._lock: Lock = Lock()
 
-    def get(self) -> T:
+    def getv(self) -> T:
         with self._lock:
             return self._value
 
-    def set(self, value: T) -> None:
+    def setv(self, value: T) -> None:
         with self._lock:
             self._value = value
 
@@ -48,15 +48,13 @@ class AutoLockingValue(Generic[T]):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self._lock.release()
 
-    # Implement __getattr__
-    def __getattr__(self, name):
-        if name == "value":
-            return self.get()
-        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+    def __getattr__(self, name: str):
+        with self._lock:
+            return getattr(self._value, name)
 
-    # Implement __setattr__
-    def __setattr__(self, name, value):
-        if name == "value":
-            self.set(value)
-        else:
+    def __setattr__(self, name: str, value: object) -> None:
+        if name in ('_value', '_lock'):
             super().__setattr__(name, value)
+        else:
+            with self._lock:
+                setattr(self._value, name, value)

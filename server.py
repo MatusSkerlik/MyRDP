@@ -10,6 +10,7 @@ from fps import FrameRateCalculator
 from lock import AutoLockingValue
 from pipeline import ReadDecodePipeline
 from pread import SocketDataReader
+from processor import StreamPacketProcessor
 from pwrite import SocketDataWriter
 from render import FlexboxLayout, TextLayout
 
@@ -58,19 +59,21 @@ class Server:
         self._connection = AutoReconnectServer(host, port)
         self._socket_reader = SocketDataReader(self._connection)
         self._socket_writer = SocketDataWriter(self._connection)
+        self._stream_packet_processor = StreamPacketProcessor(self._socket_reader, self._socket_writer)
+        self._read_decode_pipeline = ReadDecodePipeline(self._stream_packet_processor)
         self._bandwidth_monitor = BandwidthMonitor()
         self._bandwidth_state_machine = BandwidthStateMachine()
-        self._read_decode_pipeline = ReadDecodePipeline(self._socket_reader)
 
     def is_running(self):
-        return self._running.get()
+        return self._running.getv()
 
     def run(self) -> None:
-        if self._running.get():
+        if self._running.getv():
             raise RuntimeError("The 'run' method can only be called once")
-        self._running.set(True)
+        self._running.setv(True)
         self._connection.start()
         self._read_decode_pipeline.start()
+        self._stream_packet_processor.start()
 
         pygame.init()
         screen = pygame.display.set_mode((self._width, self._height), pygame.RESIZABLE)
@@ -78,7 +81,7 @@ class Server:
         clock = pygame.time.Clock()
         pipe_frame_rate = FrameRateCalculator(1)
 
-        while self._running.get():
+        while self._running.getv():
             clock.tick(self._fps)
 
             # Handle events
@@ -90,7 +93,18 @@ class Server:
 
                 elif event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.MOUSEBUTTONUP:
                     x, y = event.pos
-                    button = MouseButton(event.button)
+
+                    if event.button == pygame.BUTTON_LEFT:
+                        button = MouseButton.LEFT
+                    elif event.button == pygame.BUTTON_RIGHT:
+                        button = MouseButton.RIGHT
+                    elif event.button == pygame.BUTTON_WHEELUP:
+                        button = MouseButton.MIDDLE_UP
+                    elif event.button == pygame.BUTTON_WHEELDOWN:
+                        button = MouseButton.MIDDLE_DOWN
+                    else:
+                        continue
+
                     state = ButtonState.PRESS if event.type == pygame.MOUSEBUTTONDOWN else ButtonState.RELEASE
                     cmd = MouseClickCommand(self._socket_writer)
                     cmd.execute(x, y, button, state)
@@ -157,8 +171,9 @@ class Server:
 
     def stop(self) -> None:
         self._connection.stop()
+        self._stream_packet_processor.stop()
         self._read_decode_pipeline.stop()
-        self._running.set(False)
+        self._running.setv(False)
 
     def _calculate_ratio(self, width: int, height: int) -> Tuple[int, int, int, int]:
         aspect_ratio = float(width) / float(height)
@@ -177,7 +192,7 @@ class Server:
 
 
 HOST = "127.0.0.1"
-PORT = 8085
+PORT = 8086
 FPS = 45
 
 if __name__ == "__main__":

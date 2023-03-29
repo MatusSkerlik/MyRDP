@@ -1,10 +1,10 @@
 import io
 import struct
-from typing import Union
+from typing import Tuple
 
 from connection import Connection
-from dao import VideoData, AbstractDataObject
-from enums import PacketType
+from dao import MouseMoveData, AbstractDataObject, VideoData, MouseClickData, KeyboardData
+from enums import PacketType, ButtonState, MouseButton, ASCIIEnum
 
 
 class InvalidPacketType(Exception):
@@ -54,7 +54,7 @@ class SocketDataReader(BytesReader):
         Reads data from the socket and appends it to the buffer.
         Raises a ConnectionError if the connection is closed.
         """
-        data = self._connection.read(self._buffer_size)
+        data = self._connection.read(self._buffer_size, block=True)
 
         current_pos = self.buffer.tell()
         self.buffer.seek(0, io.SEEK_END)
@@ -102,10 +102,10 @@ class SocketDataReader(BytesReader):
         self._ensure_data(length)
         return super().read_bytes(length)
 
-    def read_packet(self) -> Union[None, AbstractDataObject]:
-        try:
-            packet_type = PacketType(self.read_byte())
+    def read_packet(self) -> Tuple[PacketType, AbstractDataObject]:
+        packet_type = PacketType(self.read_byte())
 
+        try:
             if packet_type == PacketType.VIDEO_DATA:
                 width = self.read_int()
                 height = self.read_int()
@@ -118,12 +118,30 @@ class SocketDataReader(BytesReader):
                 frame_type = self.read_int()
                 encoded_frame = self.read_bytes()
 
-                self._flush_read_data()
+                return packet_type, VideoData(width, height, encoder_type, frame_type, encoded_frame)
 
-                return VideoData(width, height, encoder_type, frame_type, encoded_frame)
+            elif packet_type == PacketType.MOUSE_MOVE:
+                x = self.read_int()
+                y = self.read_int()
 
-            raise NotImplementedError
+                return packet_type, MouseMoveData(x, y)
 
-        except ConnectionError:
-            # Connection lost, reset buffer
-            self.buffer = io.BytesIO()
+            elif packet_type == PacketType.MOUSE_CLICK:
+                button = MouseButton(self.read_byte())
+                state = ButtonState(self.read_byte())
+                x = self.read_int()
+                y = self.read_int()
+
+                return packet_type, MouseClickData(x, y, button, state)
+
+            elif packet_type == PacketType.KEYBOARD_EVENT:
+                key_code = ASCIIEnum(self.read_int())
+                state = ButtonState(self.read_byte())
+
+                return packet_type, KeyboardData(key_code, state)
+            else:
+                raise NotImplementedError
+
+        finally:
+            self._flush_read_data()
+
