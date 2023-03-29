@@ -61,7 +61,7 @@ class Server:
 
         self._running = AutoLockingValue(False)
         self._connection = AutoReconnectServer(host, port)
-        self._socket_reader = SocketDataReader(self._connection)
+        self._socket_reader = SocketDataReader(self._connection, buffer_size=4096)
         self._socket_writer = SocketDataWriter(self._connection)
         self._stream_packet_processor = StreamPacketProcessor(self._socket_reader, self._socket_writer)
         self._read_decode_pipeline = ReadDecodePipeline(self._stream_packet_processor)
@@ -227,7 +227,7 @@ class Server:
         )
 
 
-HOST = "127.0.0.1"
+HOST = ""
 PORT = 8086
 FPS = 45
 

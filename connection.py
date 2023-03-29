@@ -194,8 +194,8 @@ class AutoReconnectClient(Connection):
                 try:
                     self._server_socket: AutoLockingValue[Union[None, socket.socket]] = AutoLockingValue(
                         socket.socket(socket.AF_INET, socket.SOCK_STREAM))
-                    self._server_socket.getv().settimeout(self._timeout)
                     self._server_socket.getv().connect((self._host, self._port))
+                    self._server_socket.getv().settimeout(self._timeout)
                     self._server_connected.set()
                     print(f"Connected to {self._host}:{self._port}")
                 except socket.error as e:

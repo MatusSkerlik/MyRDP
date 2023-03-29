@@ -45,8 +45,8 @@ class Client:
         self._fps = fps
         self._running = AutoLockingValue(False)
 
-        self._connection = AutoReconnectClient(host, port, timeout=0.02)
-        self._socket_reader = SocketDataReader(self._connection, buffer_size=16)
+        self._connection = AutoReconnectClient(host, port, timeout=0.01)
+        self._socket_reader = SocketDataReader(self._connection)
         self._socket_writer = SocketDataWriter(self._connection)
         self._stream_packet_processor = StreamPacketProcessor(self._socket_reader, self._socket_writer)
         self._command_executor = CommandExecutor(self._stream_packet_processor)

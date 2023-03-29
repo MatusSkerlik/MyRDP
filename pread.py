@@ -44,7 +44,7 @@ class BytesReader:
 
 
 class SocketDataReader(BytesReader):
-    def __init__(self, connection: Connection, buffer_size: int = 4096):
+    def __init__(self, connection: Connection, buffer_size: int = 256):
         super().__init__(b"")  # Initialize BytesReader with empty bytes
         self._buffer_size = buffer_size
         self._connection = connection
