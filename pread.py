@@ -3,8 +3,8 @@ import struct
 from typing import Tuple
 
 from connection import Connection
-from dao import VideoData, AbstractDataObject
-from enums import PacketType
+from dao import MouseMoveData, AbstractDataObject, VideoData, MouseClickData, KeyboardData
+from enums import PacketType, ButtonState, MouseButton, ASCIIEnum
 
 
 class InvalidPacketType(Exception):
@@ -105,20 +105,42 @@ class SocketDataReader(BytesReader):
     def read_packet(self) -> Tuple[PacketType, AbstractDataObject]:
         packet_type = PacketType(self.read_byte())
 
-        if packet_type == PacketType.VIDEO_DATA:
-            width = self.read_int()
-            height = self.read_int()
-            frame_packet = self.read_bytes()
+        try:
+            if packet_type == PacketType.VIDEO_DATA:
+                width = self.read_int()
+                height = self.read_int()
+                frame_packet = self.read_bytes()
 
-            # Seek to the start of frame packet, -4 represents byte array size
-            self.buffer.seek(self.buffer.tell() - len(frame_packet))
+                # Seek to the start of frame packet, -4 represents byte array size
+                self.buffer.seek(self.buffer.tell() - len(frame_packet))
 
-            encoder_type = self.read_int()
-            frame_type = self.read_int()
-            encoded_frame = self.read_bytes()
+                encoder_type = self.read_int()
+                frame_type = self.read_int()
+                encoded_frame = self.read_bytes()
 
+                return packet_type, VideoData(width, height, encoder_type, frame_type, encoded_frame)
+
+            elif packet_type == PacketType.MOUSE_MOVE:
+                x = self.read_int()
+                y = self.read_int()
+
+                return packet_type, MouseMoveData(x, y)
+
+            elif packet_type == PacketType.MOUSE_CLICK:
+                button = MouseButton(self.read_byte())
+                state = ButtonState(self.read_byte())
+                x = self.read_int()
+                y = self.read_int()
+
+                return packet_type, MouseClickData(x, y, button, state)
+
+            elif packet_type == PacketType.KEYBOARD_EVENT:
+                key_code = ASCIIEnum(self.read_int())
+                state = ButtonState(self.read_byte())
+
+                return packet_type, KeyboardData(key_code, state)
+            else:
+                raise NotImplementedError
+
+        finally:
             self._flush_read_data()
-
-            return packet_type, VideoData(width, height, encoder_type, frame_type, encoded_frame)
-
-        raise NotImplementedError

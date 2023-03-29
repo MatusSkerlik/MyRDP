@@ -1,11 +1,16 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 
+from enums import MouseButton, ButtonState, ASCIIEnum
 from packet import Packet
-from pfactory import VideoContainerDataPacketFactory
+from pfactory import VideoContainerDataPacketFactory, MouseMovePacketFactory, MouseClickPacketFactory, \
+    KeyboardEventPacketFactory
 
 
 class AbstractDataObject(ABC):
-    pass
+
+    @abstractmethod
+    def to_packet(self) -> Packet:
+        pass
 
 
 class VideoData(AbstractDataObject):
@@ -33,3 +38,57 @@ class VideoData(AbstractDataObject):
 
     def get_data(self) -> bytes:
         return self._data
+
+
+class MouseMoveData(AbstractDataObject):
+    def __init__(self, x: int, y: int):
+        self._x = x
+        self._y = y
+
+    def to_packet(self) -> Packet:
+        return MouseMovePacketFactory.create_packet(self._x, self.y)
+
+    def get_x(self):
+        return self._x
+
+    def get_y(self):
+        return self._y
+
+
+class MouseClickData(AbstractDataObject):
+
+    def __init__(self, x: int, y: int, button: MouseButton, state: ButtonState) -> None:
+        self._x = x
+        self._y = y
+        self._button = button
+        self._state = state
+
+    def to_packet(self) -> Packet:
+        return MouseClickPacketFactory.create_packet(self._x, self._y, self._button, self._state)
+
+    def get_x(self):
+        return self._x
+
+    def get_y(self):
+        return self._y
+
+    def get_button(self):
+        return self._button
+
+    def get_state(self):
+        return self._state
+
+
+class KeyboardData(AbstractDataObject):
+    def __init__(self, key: ASCIIEnum, state: ButtonState):
+        self._key = key
+        self._state = state
+
+    def to_packet(self) -> Packet:
+        return KeyboardEventPacketFactory.create_packet(self._key, self._state)
+
+    def get_key(self):
+        return self._key
+
+    def get_state(self):
+        return self._state

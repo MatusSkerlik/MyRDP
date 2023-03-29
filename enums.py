@@ -9,7 +9,6 @@ class PacketType(IntEnum):
     MOUSE_CLICK = 2
     MOUSE_MOVE = 3
     KEYBOARD_EVENT = 4
-    SYNCHRONIZATION_PACKET = 5
     # Add more packet types as needed
 
 
@@ -18,8 +17,9 @@ class MouseButton(IntEnum):
     Enumeration representing different mouse button identifiers.
     """
     LEFT = 0x01
-    MIDDLE = 0x02
-    RIGHT = 0x03
+    MIDDLE_UP = 0x02
+    MIDDLE_DOWN = 0x03
+    RIGHT = 0x04
 
 
 class ButtonState(IntEnum):

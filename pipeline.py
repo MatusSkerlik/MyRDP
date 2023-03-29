@@ -8,7 +8,7 @@ from typing import Union, List, Tuple
 import numpy as np
 
 from capture import AbstractCaptureStrategy, CaptureStrategyBuilder
-from dao import VideoContainerDataPacketFactory, VideoData
+from dao import VideoContainerDataPacketFactory, MouseMoveData
 from decode import DecoderStrategyBuilder, AbstractDecoderStrategy
 from encode import AbstractEncoderStrategy, EncoderStrategyBuilder
 from enums import PacketType
@@ -24,14 +24,14 @@ class Component(ABC):
         self._running = AutoLockingValue(True)
 
     def is_running(self):
-        return self._running.get()
+        return self._running.getv()
 
     @abstractmethod
     def run(self) -> None:
         pass
 
     def stop(self):
-        self._running.set(False)
+        self._running.setv(False)
 
 
 class _CaptureComponent(Component):
@@ -63,12 +63,12 @@ class _CaptureComponent(Component):
         return f"CaptureComponent(event={self._sync_event.is_set()})"
 
     def set_capture_strategy(self, capture_strategy: AbstractCaptureStrategy):
-        self._capture_strategy.set(capture_strategy)
+        self._capture_strategy.setv(capture_strategy)
 
     def run(self) -> None:
         while self.is_running():
             if self._sync_event.wait(SLEEP_TIME):
-                captured_data = self._capture_strategy.get().capture_screen()
+                captured_data = self._capture_strategy.getv().capture_screen()
                 self.output_queue.put(captured_data)
                 self._sync_event.clear()
 
@@ -109,10 +109,10 @@ class _EncoderComponent(Component):
         self._encoder_strategy = AutoLockingValue(encoder_strategy)
 
     def __str__(self):
-        return f"EncoderComponent(width={self._width}, height={self._height}, strategy={self._encoder_strategy.get()})"
+        return f"EncoderComponent(width={self._width}, height={self._height}, strategy={self._encoder_strategy.getv()})"
 
     def set_encoder_strategy(self, encoder_strategy: AbstractEncoderStrategy):
-        self._encoder_strategy.set(encoder_strategy)
+        self._encoder_strategy.setv(encoder_strategy)
 
     def run(self) -> None:
         while self.is_running():
@@ -120,7 +120,7 @@ class _EncoderComponent(Component):
                 frame = self._input_queue.get(timeout=SLEEP_TIME)
             except queue.Empty:
                 continue
-            encoded_data = self._encoder_strategy.get().encode_frame(self._width, self._height, frame)
+            encoded_data = self._encoder_strategy.getv().encode_frame(self._width, self._height, frame)
 
             # If encoded_data is available, it means the encoding strategy has
             # enough data to produce an encoded frame. If not, it will wait
@@ -371,19 +371,19 @@ class _DecoderComponent(Component):
         self._decoder_strategy = AutoLockingValue(decoder_strategy)
 
     def __str__(self):
-        return f"DecoderComponent(strategy={self._decoder_strategy.get()})"
+        return f"DecoderComponent(strategy={self._decoder_strategy.getv()})"
 
     def set_decoder_strategy(self, decoder_strategy: AbstractDecoderStrategy):
-        self._decoder_strategy.set(decoder_strategy)
+        self._decoder_strategy.setv(decoder_strategy)
 
     def run(self) -> None:
         while self.is_running():
             try:
-                video_data: VideoData = self._input_queue.get(block=False)
+                video_data: MouseMoveData = self._input_queue.get(block=False)
             except queue.Empty:
                 time.sleep(0.01)
                 continue
-            decoded_frame = self._decoder_strategy.get().decode_packet(video_data)
+            decoded_frame = self._decoder_strategy.getv().decode_packet(video_data)
             self.output_queue.put((video_data, decoded_frame))
 
 
@@ -417,7 +417,7 @@ class ReadDecodePipeline(AbstractPipeline):
     def get_pipeline(self):
         return [self._socket_reader_component, self._decoder_component]
 
-    def get(self) -> Union[None, Tuple[VideoData, List[np.ndarray]]]:
+    def get(self) -> Union[None, Tuple[MouseMoveData, List[np.ndarray]]]:
         try:
             return self._decoder_component.output_queue.get(block=False)
         except queue.Empty:

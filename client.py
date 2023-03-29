@@ -44,19 +44,19 @@ class Client:
         self._fps = fps
         self._running = AutoLockingValue(False)
 
-        self._connection = AutoReconnectClient(host, port)
-        self._socket_reader = SocketDataReader(self._connection)
+        self._connection = AutoReconnectClient(host, port, timeout=0.02)
+        self._socket_reader = SocketDataReader(self._connection, buffer_size=16)
         self._socket_writer = SocketDataWriter(self._connection)
         self._stream_packet_processor = StreamPacketProcessor(self._socket_reader, self._socket_writer)
         self._pipeline = CaptureEncodeSendPipeline(fps, self._socket_writer)
 
     def is_running(self):
-        return self._running.get()
+        return self._running.getv()
 
     def run(self):
-        if self._running.get():
+        if self._running.getv():
             raise RuntimeError("The 'run' method can only be called once")
-        self._running.set(True)
+        self._running.setv(True)
         self._connection.start()
         self._stream_packet_processor.start()
         self._pipeline.start()
@@ -66,7 +66,7 @@ class Client:
         pygame.display.set_caption(self._title)
         clock = pygame.time.Clock()
 
-        while self._running.get():
+        while self._running.getv():
             for event in pygame.event.get():
                 if event.type == QUIT:
                     self.stop()
@@ -82,7 +82,7 @@ class Client:
         self._connection.stop()
         self._stream_packet_processor.stop()
         self._pipeline.stop()
-        self._running.set(False)
+        self._running.setv(False)
 
 
 HOST = "127.0.0.1"
