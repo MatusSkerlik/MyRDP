@@ -8,7 +8,7 @@ from typing import Union, List, Tuple
 import numpy as np
 
 from capture import AbstractCaptureStrategy, CaptureStrategyBuilder
-from dao import VideoContainerDataPacketFactory, MouseMoveData
+from dao import VideoContainerDataPacketFactory, MouseMoveData, VideoData
 from decode import DecoderStrategyBuilder, AbstractDecoderStrategy
 from encode import AbstractEncoderStrategy, EncoderStrategyBuilder
 from enums import PacketType
@@ -417,7 +417,7 @@ class ReadDecodePipeline(AbstractPipeline):
     def get_pipeline(self):
         return [self._socket_reader_component, self._decoder_component]
 
-    def get(self) -> Union[None, Tuple[MouseMoveData, List[np.ndarray]]]:
+    def get(self) -> Union[None, Tuple[VideoData, List[np.ndarray]]]:
         try:
             return self._decoder_component.output_queue.get(block=False)
         except queue.Empty:

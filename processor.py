@@ -4,7 +4,7 @@ import time
 from queue import Queue
 from typing import Dict, Union
 
-from dao import AbstractDataObject
+from dao import MouseMoveData, MouseClickData, KeyboardData
 from enums import PacketType
 from lock import AutoLockingValue
 from pread import SocketDataReader
@@ -30,7 +30,7 @@ class StreamPacketProcessor:
         self._running.setv(False)
         self._thread.join()
 
-    def get_packet_data(self, packet_type: PacketType) -> Union[None, AbstractDataObject]:
+    def get_packet_data(self, packet_type: PacketType) -> Union[None, MouseMoveData, MouseClickData, KeyboardData]:
         try:
             return self._packet_queues.get(packet_type).get_nowait()
         except queue.Empty:

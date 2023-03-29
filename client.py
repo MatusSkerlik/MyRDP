@@ -2,6 +2,7 @@ import pygame
 from pygame import QUIT
 
 from connection import AutoReconnectClient
+from executor import CommandExecutor
 from lock import AutoLockingValue
 from pipeline import CaptureEncodeSendPipeline
 from pread import SocketDataReader
@@ -48,6 +49,7 @@ class Client:
         self._socket_reader = SocketDataReader(self._connection, buffer_size=16)
         self._socket_writer = SocketDataWriter(self._connection)
         self._stream_packet_processor = StreamPacketProcessor(self._socket_reader, self._socket_writer)
+        self._command_executor = CommandExecutor(self._stream_packet_processor)
         self._pipeline = CaptureEncodeSendPipeline(fps, self._socket_writer)
 
     def is_running(self):
@@ -60,6 +62,7 @@ class Client:
         self._connection.start()
         self._stream_packet_processor.start()
         self._pipeline.start()
+        self._command_executor.start()
 
         pygame.init()
         screen = pygame.display.set_mode((self._width, self._height))
@@ -82,6 +85,7 @@ class Client:
         self._connection.stop()
         self._stream_packet_processor.stop()
         self._pipeline.stop()
+        self._command_executor.stop()
         self._running.setv(False)
 
 

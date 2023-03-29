@@ -3,7 +3,7 @@ from typing import Tuple
 import pygame
 
 from bandwidth import BandwidthMonitor, BandwidthStateMachine, BandwidthFormatter
-from command import MouseMoveCommand, MouseClickCommand, KeyboardEventCommand
+from command import MouseMoveNetworkCommand, MouseClickNetworkCommand, KeyboardEventNetworkCommand
 from connection import AutoReconnectServer
 from enums import MouseButton, ButtonState, ASCIIEnum
 from fps import FrameRateCalculator
@@ -52,6 +52,10 @@ class Server:
 
         self._width = width
         self._height = height
+        self._client_width = None
+        self._client_height = None
+        self._x_offset = None
+        self._y_offset = None
         self._fps = fps
         self._caption = caption
 
@@ -88,32 +92,40 @@ class Server:
             for event in pygame.event.get():
                 if event.type == pygame.MOUSEMOTION:
                     x, y = event.pos
-                    cmd = MouseMoveCommand(self._socket_writer)
-                    cmd.execute(x, y)
+                    if self._if_event_sent_is_possible() and self._if_cords_domain_in_range(x, y):
+                        x, y = self._recalculate_cords(x, y)
+                        cmd = MouseMoveNetworkCommand(self._socket_writer, x, y)
+                        cmd.execute()
 
                 elif event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.MOUSEBUTTONUP:
                     x, y = event.pos
+                    if self._if_event_sent_is_possible() and self._if_cords_domain_in_range(x, y):
+                        x, y = self._recalculate_cords(*event.pos)
 
-                    if event.button == pygame.BUTTON_LEFT:
-                        button = MouseButton.LEFT
-                    elif event.button == pygame.BUTTON_RIGHT:
-                        button = MouseButton.RIGHT
-                    elif event.button == pygame.BUTTON_WHEELUP:
-                        button = MouseButton.MIDDLE_UP
-                    elif event.button == pygame.BUTTON_WHEELDOWN:
-                        button = MouseButton.MIDDLE_DOWN
-                    else:
-                        continue
+                        if event.button == pygame.BUTTON_LEFT:
+                            button = MouseButton.LEFT
+                        elif event.button == pygame.BUTTON_RIGHT:
+                            button = MouseButton.RIGHT
+                        elif event.button == pygame.BUTTON_WHEELUP:
+                            button = MouseButton.MIDDLE_UP
+                        elif event.button == pygame.BUTTON_WHEELDOWN:
+                            button = MouseButton.MIDDLE_DOWN
+                        else:
+                            continue
 
-                    state = ButtonState.PRESS if event.type == pygame.MOUSEBUTTONDOWN else ButtonState.RELEASE
-                    cmd = MouseClickCommand(self._socket_writer)
-                    cmd.execute(x, y, button, state)
+                        state = ButtonState.PRESS if event.type == pygame.MOUSEBUTTONDOWN else ButtonState.RELEASE
+                        cmd = MouseClickNetworkCommand(self._socket_writer, x, y, button, state)
+                        cmd.execute()
 
                 elif event.type == pygame.KEYDOWN or event.type == pygame.KEYUP:
-                    key_code = ASCIIEnum(event.key)
+                    try:
+                        key_code = ASCIIEnum(event.key)
+                    except ValueError:
+                        # TODO we are skipping not supported keys
+                        continue
                     state = ButtonState.PRESS if event.type == pygame.KEYDOWN else ButtonState.RELEASE
-                    cmd = KeyboardEventCommand(self._socket_writer)
-                    cmd.execute(key_code, state)
+                    cmd = KeyboardEventNetworkCommand(self._socket_writer, key_code, state)
+                    cmd.execute()
 
                 elif event.type == pygame.VIDEORESIZE:
                     self._width, self._height = event.w, event.h
@@ -137,6 +149,10 @@ class Server:
                 height = video_data.get_height()
                 data = video_data.get_data()
 
+                # Update client width and height
+                self._client_width = width
+                self._client_height = height
+
                 # Update minute bandwidth statistics
                 self._bandwidth_monitor.register_received_bytes(len(data))
 
@@ -149,6 +165,10 @@ class Server:
 
                 # Calculate new width and height while preserving aspect ratio
                 x_offset, y_offset, new_width, new_height = self._calculate_ratio(width, height)
+
+                # Update offset
+                self._x_offset = x_offset
+                self._y_offset = y_offset
 
                 # Rescale frame
                 img_scaled = pygame.transform.scale(img, (new_width, new_height))
@@ -189,6 +209,22 @@ class Server:
         y_offset = (self._height - new_height) // 2
 
         return x_offset, y_offset, new_width, new_height
+
+    def _if_event_sent_is_possible(self):
+        return (self._client_width is not None
+                and self._client_height is not None
+                and self._x_offset is not None
+                and self._y_offset is not None)
+
+    def _if_cords_domain_in_range(self, x: int, y: int):
+        return (self._x_offset <= x <= self._width - self._x_offset * 2
+                and self._y_offset <= y <= self._height - self._y_offset * 2)
+
+    def _recalculate_cords(self, x: int, y: int):
+        return (
+            int((x - self._x_offset) * (self._client_width / self._width)),
+            int((y - self._y_offset) * (self._client_height / self._height))
+        )
 
 
 HOST = "127.0.0.1"
