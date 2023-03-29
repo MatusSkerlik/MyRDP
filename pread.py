@@ -144,3 +144,4 @@ class SocketDataReader(BytesReader):
 
         finally:
             self._flush_read_data()
+
