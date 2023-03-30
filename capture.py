@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, Union
 
-from mss import mss
+import mss
 
 from fps import FrameRateLimiter
 
@@ -31,7 +31,7 @@ class MSSCaptureStrategy(AbstractCaptureStrategy):
 
     def __init__(self, fps: int):
         self._frame_rate_limiter = FrameRateLimiter(fps)
-        self._sct = mss()
+        self._sct = mss.mss()
 
     def get_monitor_width(self) -> int:
         return self._sct.monitors[1].get("width")
@@ -39,7 +39,7 @@ class MSSCaptureStrategy(AbstractCaptureStrategy):
     def get_monitor_height(self) -> int:
         return self._sct.monitors[1].get("height")
 
-    def capture_screen(self) -> bytes:
+    def capture_screen(self) -> Union[None, bytes]:
         # sleep for the required time to match fps
         self._frame_rate_limiter.tick()
 
@@ -47,7 +47,11 @@ class MSSCaptureStrategy(AbstractCaptureStrategy):
         monitor = self._sct.monitors[1]
 
         # Capture the screen
-        screen_shot = self._sct.grab(monitor)
+        try:
+            screen_shot = self._sct.grab(monitor)
+        except mss.exception.ScreenShotError as e:
+            print(e)
+            return None
 
         # Convert the resized image to a bytes and return
         return screen_shot.rgb

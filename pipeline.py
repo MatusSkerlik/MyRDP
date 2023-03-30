@@ -68,9 +68,10 @@ class _CaptureComponent(Component):
     def run(self) -> None:
         while self.is_running():
             if self._sync_event.wait(SLEEP_TIME):
-                captured_data = self._capture_strategy.getv().capture_screen()
-                self.output_queue.put(captured_data)
-                self._sync_event.clear()
+                screen_shot = self._capture_strategy.getv().capture_screen()
+                if screen_shot:
+                    self.output_queue.put(screen_shot)
+                    self._sync_event.clear()
 
     def stop(self):
         super().stop()

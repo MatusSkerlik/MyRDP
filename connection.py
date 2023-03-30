@@ -90,6 +90,7 @@ class AutoReconnectServer(Connection):
 
     def _bind(self):
         try:
+            self._server_socket.setblocking(True)
             self._server_socket.bind((self._host, self._port))
             self._server_socket.listen(self._backlog)
             print(f"Server listening on {self._host}:{self._port}")
@@ -105,6 +106,7 @@ class AutoReconnectServer(Connection):
                 try:
                     client_socket, client_address = self._server_socket.accept()
                     self._client_socket = client_socket
+                    self._client_socket.setblocking(True)
                     self._client_connected.set()
                     print(f"Connection from {client_address}")
                 except socket.error as e:
@@ -186,6 +188,7 @@ class AutoReconnectClient(Connection):
             if not self._server_connected.is_set():
                 try:
                     self._server_socket.connect((self._host, self._port))
+                    self._server_socket.setblocking(True)
                     self._server_connected.set()
                     print(f"Connected to {self._host}:{self._port}")
                 except socket.error as e:
