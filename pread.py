@@ -49,35 +49,6 @@ class SocketDataReader(BytesReader):
         self._buffer_size = buffer_size
         self._connection = connection
 
-    def _fill_buffer(self):
-        """
-        Reads data from the socket and appends it to the buffer.
-        Raises a ConnectionError if the connection is closed.
-        """
-        data = self._connection.read(self._buffer_size, block=True)
-
-        current_pos = self.buffer.tell()
-        self.buffer.seek(0, io.SEEK_END)
-        self.buffer.write(data)
-        self.buffer.seek(current_pos)
-
-    def _flush_read_data(self):
-        """
-        Flushes read data from the buffer by discarding the data read so far
-        and leaving only the unread data in the buffer.
-        """
-        remaining_data = self.buffer.getvalue()[self.buffer.tell():]
-        self.buffer = io.BytesIO()
-        self.buffer.write(remaining_data)
-        self.buffer.seek(0)
-
-    def _ensure_data(self, size: int):
-        """
-        Ensures that the buffer has at least `size` bytes of data.
-        """
-        while (self.buffer.getbuffer().nbytes - self.buffer.tell()) < size:
-            self._fill_buffer()
-
     def read_int(self) -> int:
         self._ensure_data(4)
         return super().read_int()
@@ -102,8 +73,67 @@ class SocketDataReader(BytesReader):
         self._ensure_data(length)
         return super().read_bytes(length)
 
+    def _flush_read_data(self):
+        """
+        Flushes read data from the buffer by discarding the data read so far
+        and leaving only the unread data in the buffer.
+        """
+        remaining_data = self.buffer.getvalue()[self.buffer.tell():]
+        self.buffer = io.BytesIO()
+        self.buffer.write(remaining_data)
+        self.buffer.seek(0)
+
+    def _ensure_data(self, size: int):
+        """
+        Ensures that the buffer has at least `size` bytes of data.
+        """
+        while (self.buffer.getbuffer().nbytes - self.buffer.tell()) < size:
+            self._fill_buffer()
+
+    def _fill_buffer(self):
+        """
+        Reads data from the socket and appends it to the buffer.
+        Raises a ConnectionError if the connection is closed.
+        """
+        data = self._connection.read(self._buffer_size, block=True)
+
+        current_pos = self.buffer.tell()
+        self.buffer.seek(0, io.SEEK_END)
+        self.buffer.write(data)
+        self.buffer.seek(current_pos)
+
+    def _seek_to_end_of_sync_packet(self) -> bool:
+        """
+        Searches for the synchronization packet bytes in the buffer and seeks
+        to the position just after the end of the synchronization packet if found.
+
+        The synchronization packet bytes are represented by the byte sequence
+        '\x00\x01\x00\x01\x00\x01\x00\x01'.
+
+        Returns:
+            bool: True if the synchronization packet bytes are found in the buffer,
+                  False otherwise.
+        """
+
+        sync_packet_bytes = b'\x00\x01\x00\x01\x00\x01\x00\x01'
+        content = self.buffer.getvalue()
+
+        sync_packet_position = content.find(sync_packet_bytes)
+
+        if sync_packet_position != -1:
+            self.buffer.seek(sync_packet_position + len(sync_packet_bytes))
+            return True
+        else:
+            return False
+
     def read_packet(self) -> Tuple[PacketType, AbstractDataObject]:
-        packet_type = PacketType(self.read_byte())
+        try:
+            packet_type = PacketType(self.read_byte())
+        except ValueError:
+            # Synchronization error
+            while not self._seek_to_end_of_sync_packet():
+                self._ensure_data(self._buffer_size)
+            packet_type = PacketType(self.read_byte())
 
         try:
             if packet_type == PacketType.VIDEO_DATA:
@@ -144,4 +174,3 @@ class SocketDataReader(BytesReader):
 
         finally:
             self._flush_read_data()
-

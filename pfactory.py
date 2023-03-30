@@ -109,3 +109,25 @@ class VideoFrameDataPacketFactory(AbstractPacketFactory):
         packet.add_int(frame_type)
         packet.add_bytes(data)
         return packet
+
+
+class SynchronizationPacketFactory(AbstractPacketFactory):
+
+    @staticmethod
+    def create_packet(*args, **kwargs) -> Packet:
+        """
+        Creates a new synchronization packet.
+
+        The packet contains the synchronization byte sequence
+        '\x00\x01\x00\x01\x00\x01\x00\x01'.
+        """
+        packet = Packet()
+        packet.add_byte(0x00)
+        packet.add_byte(0x01)
+        packet.add_byte(0x00)
+        packet.add_byte(0x01)
+        packet.add_byte(0x00)
+        packet.add_byte(0x01)
+        packet.add_byte(0x00)
+        packet.add_byte(0x01)
+        return packet
