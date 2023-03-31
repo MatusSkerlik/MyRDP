@@ -13,6 +13,9 @@ class CommandExecutor(Task):
         super().__init__()
         self._stream_packet_processor = stream_packet_processor
 
+    def __str__(self) -> str:
+        return f"CommandExecutor()"
+
     def run(self):
         while self.running.getv():
             time.sleep(0.005)

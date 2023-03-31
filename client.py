@@ -76,7 +76,7 @@ class Client:
             pygame.display.flip()
             clock.tick(self._fps)
 
-        pygame.quit()
+    pygame.quit()
 
     def stop(self):
         self._connection.stop()
@@ -87,7 +87,7 @@ class Client:
 
 
 HOST = "127.0.0.1"
-PORT = 8070
+PORT = 8083
 FPS = 25
 
 if __name__ == "__main__":

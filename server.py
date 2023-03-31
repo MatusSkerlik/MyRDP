@@ -238,7 +238,7 @@ class Server:
 
 
 HOST = ""
-PORT = 8070
+PORT = 8083
 FPS = 45
 
 if __name__ == "__main__":

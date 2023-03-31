@@ -56,11 +56,12 @@ class Connection(Task, ABC):
         raise ConnectionError("Connection closed")
 
     def stop(self):
-        super().stop()
         if isinstance(self.socket, socket.socket):
             self.socket.close()
         # Free waiters
         self.initialized.set()
+
+        super().stop()
 
 
 class AutoReconnectServer(Connection):
@@ -99,7 +100,6 @@ class AutoReconnectServer(Connection):
                         if self.socket is not None:
                             self.socket.close()
                         self.socket, client_address = server_socket.accept()
-                        self.socket.setblocking(True)
                         self.initialized.set()
 
                         # Close server socket after obtaining client
@@ -110,9 +110,10 @@ class AutoReconnectServer(Connection):
                     except socket.error as e:
                         self.initialized.clear()
                         print(f"Accept error: {e}")
-                elif self.socket.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR) != 0:
-                    # There is error with socket
-                    self.initialized.clear()
+                else:
+                    if self.socket.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR) != 0:
+                        # There is error with socket
+                        self.initialized.clear()
 
 
 class AutoReconnectClient(Connection):
@@ -145,7 +146,6 @@ class AutoReconnectClient(Connection):
                             self.socket.close()
                         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                         self.socket.connect((self._host, self._port))
-                        self.socket.setblocking(True)
                         self.initialized.set()
                         print(f"Connected to {self._host}:{self._port}")
                     except socket.timeout:
