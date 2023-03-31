@@ -1,30 +1,20 @@
-import threading
 import time
 
 from command import MouseMoveCommand, MouseClickCommand, KeyboardEventCommand
 from dao import MouseMoveData, MouseClickData, KeyboardData
 from enums import PacketType
-from lock import AutoLockingValue
 from processor import StreamPacketProcessor
+from thread import Task
 
 
-class CommandExecutor:
+class CommandExecutor(Task):
 
     def __init__(self, stream_packet_processor: StreamPacketProcessor):
+        super().__init__()
         self._stream_packet_processor = stream_packet_processor
-        self._thread = threading.Thread(target=self._run)
-        self._running = AutoLockingValue(False)
 
-    def start(self):
-        self._running.setv(True)
-        self._thread.start()
-
-    def stop(self):
-        self._running.setv(False)
-        # self._thread.join()
-
-    def _run(self):
-        while self._running.getv():
+    def run(self):
+        while self.running.getv():
             time.sleep(0.005)
 
             mouse_move: MouseMoveData = self._stream_packet_processor.get_packet_data(PacketType.MOUSE_MOVE)

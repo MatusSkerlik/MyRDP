@@ -15,20 +15,13 @@ from enums import PacketType
 from lock import AutoLockingValue
 from processor import StreamPacketProcessor
 from pwrite import SocketDataWriter
+from thread import Task
 
 SLEEP_TIME = 1 / 120
 
 
-class Component(ABC):
-    def __init__(self):
-        self.running = AutoLockingValue(True)
-
-    @abstractmethod
-    def run(self) -> None:
-        pass
-
-    def stop(self):
-        self.running.setv(False)
+class Component(Task, ABC):
+    pass
 
 
 class _CaptureComponent(Component):
@@ -209,33 +202,13 @@ class AbstractPipeline(ABC):
         _threads (Union[None, List[threading.Thread]]): A list of threads used to run the components in the pipeline.
     """
 
-    def __init__(self):
-        self._threads: Union[None, List[threading.Thread]] = None
-
     def start(self):
-        if self._threads is None:
-            self._threads = []
-            for component in self.get_pipeline():
-                thread = threading.Thread(target=component.run)
-                print(f"Starting thread for: {component}")
-                thread.daemon = True
-                thread.start()
-                self._threads.append(thread)
-        else:
-            raise RuntimeError("Pipeline already started.")
+        for component in self.get_pipeline():
+            component.start()
 
     def stop(self):
-        if len(self._threads) > 0:
-            for component in self.get_pipeline():
-                print(f"Stopping component '{component}'")
-                component.stop()
-            for component, thread in zip(self.get_pipeline(), self._threads):
-                print(f"Joining thread for '{component}'")
-                # thread.join()
-                print(f"Joined thread for '{component}'")
-            self._threads = []
-        else:
-            raise RuntimeError("Pipeline did not started")
+        for component in self.get_pipeline():
+            component.stop()
 
     @abstractmethod
     def get_pipeline(self):

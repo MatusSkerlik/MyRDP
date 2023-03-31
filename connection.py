@@ -2,20 +2,21 @@ import socket
 import threading
 import time
 from abc import ABC
-from typing import Union, Callable
+from typing import Union
 
 from lock import AutoLockingValue
+from thread import Task
 
 
-class Connection(ABC):
+class Connection(Task, ABC):
 
-    def __init__(self, runnable: Callable) -> None:
+    def __init__(self) -> None:
+        super().__init__()
+
         self.running = AutoLockingValue(False)
         self.initialized = threading.Event()
         self.initialized.clear()
         self.socket: Union[None, socket.socket] = None
-        self.thread: Union[None, threading.Thread] = threading.Thread(target=runnable)
-        self.thread.daemon = True
 
     def write(self, data: bytes, block=True) -> None:
         if self.running.getv():
@@ -54,17 +55,12 @@ class Connection(ABC):
                 raise ConnectionError(e)
         raise ConnectionError("Connection closed")
 
-    def start(self):
-        self.running.setv(True)
-        self.thread.start()
-
     def stop(self):
-        self.running.setv(False)
+        super().stop()
         if isinstance(self.socket, socket.socket):
             self.socket.close()
         # Free waiters
         self.initialized.set()
-        # self.thread.join()
 
 
 class AutoReconnectServer(Connection):
@@ -80,14 +76,14 @@ class AutoReconnectServer(Connection):
     """
 
     def __init__(self, host, port, backlog=1, retry_timeout=1):
-        super().__init__(self._accept)
+        super().__init__()
 
         self._host = host
         self._port = port
         self._backlog = backlog
         self._retry_timeout = retry_timeout
 
-    def _accept(self):
+    def run(self):
         while True:
             time.sleep(0.01)
             with self.running as is_running:
@@ -131,12 +127,12 @@ class AutoReconnectClient(Connection):
     """
 
     def __init__(self, host, port, retry_interval=1):
-        super().__init__(self._connect)
+        super().__init__()
         self._host = host
         self._port = port
         self._retry_interval = retry_interval
 
-    def _connect(self):
+    def run(self):
         while True:
             time.sleep(0.01)
             with self.running as is_running:

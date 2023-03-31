@@ -62,7 +62,7 @@ class Server:
         self._caption = caption
         self._last_image = None
 
-        self._running = AutoLockingValue(False)
+        self._running = False
         self._connection = AutoReconnectServer(host, port)
         self._socket_reader = SocketDataReader(self._connection, buffer_size=4096)
         self._socket_writer = SocketDataWriter(self._connection)
@@ -71,13 +71,10 @@ class Server:
         self._bandwidth_monitor = BandwidthMonitor()
         self._bandwidth_state_machine = BandwidthStateMachine()
 
-    def is_running(self):
-        return self._running.getv()
-
     def run(self) -> None:
-        if self._running.getv():
+        if self._running:
             raise RuntimeError("The 'run' method can only be called once")
-        self._running.setv(True)
+        self._running = True
         self._connection.start()
         self._read_decode_pipeline.start()
         self._stream_packet_processor.start()
@@ -88,7 +85,7 @@ class Server:
         clock = pygame.time.Clock()
         pipe_frame_rate = FrameRateCalculator(1)
 
-        while self._running.getv():
+        while self._running:
             clock.tick(self._fps)
 
             # Handle events
@@ -204,7 +201,7 @@ class Server:
         self._connection.stop()
         self._stream_packet_processor.stop()
         self._read_decode_pipeline.stop()
-        self._running.setv(False)
+        self._running = False
 
     def _calculate_ratio(self, width: int, height: int) -> Tuple[int, int, int, int]:
         aspect_ratio = float(width) / float(height)
@@ -241,7 +238,7 @@ class Server:
 
 
 HOST = ""
-PORT = 8086
+PORT = 8070
 FPS = 45
 
 if __name__ == "__main__":

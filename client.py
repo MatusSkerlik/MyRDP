@@ -43,7 +43,7 @@ class Client:
         self._height = height
 
         self._fps = fps
-        self._running = AutoLockingValue(False)
+        self._running = False
 
         self._connection = AutoReconnectClient(host, port)
         self._socket_reader = SocketDataReader(self._connection)
@@ -52,13 +52,10 @@ class Client:
         self._command_executor = CommandExecutor(self._stream_packet_processor)
         self._pipeline = CaptureEncodeSendPipeline(fps, self._socket_writer)
 
-    def is_running(self):
-        return self._running.getv()
-
     def run(self):
-        if self._running.getv():
+        if self._running:
             raise RuntimeError("The 'run' method can only be called once")
-        self._running.setv(True)
+        self._running = True
         self._connection.start()
         self._stream_packet_processor.start()
         self._pipeline.start()
@@ -69,7 +66,7 @@ class Client:
         pygame.display.set_caption(self._title)
         clock = pygame.time.Clock()
 
-        while self._running.getv():
+        while self._running:
             for event in pygame.event.get():
                 if event.type == QUIT:
                     self.stop()
@@ -86,11 +83,11 @@ class Client:
         self._stream_packet_processor.stop()
         self._pipeline.stop()
         self._command_executor.stop()
-        self._running.setv(False)
+        self._running = False
 
 
 HOST = "127.0.0.1"
-PORT = 8086
+PORT = 8070
 FPS = 25
 
 if __name__ == "__main__":
