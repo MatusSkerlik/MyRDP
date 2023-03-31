@@ -21,17 +21,14 @@ SLEEP_TIME = 1 / 120
 
 class Component(ABC):
     def __init__(self):
-        self._running = AutoLockingValue(True)
-
-    def is_running(self):
-        return self._running.getv()
+        self.running = AutoLockingValue(True)
 
     @abstractmethod
     def run(self) -> None:
         pass
 
     def stop(self):
-        self._running.setv(False)
+        self.running.setv(False)
 
 
 class _CaptureComponent(Component):
@@ -66,7 +63,11 @@ class _CaptureComponent(Component):
         self._capture_strategy.setv(capture_strategy)
 
     def run(self) -> None:
-        while self.is_running():
+        while True:
+            with self.running as is_running:
+                if not is_running:
+                    break
+
             if self._sync_event.wait(SLEEP_TIME):
                 screen_shot = self._capture_strategy.getv().capture_screen()
                 if screen_shot:
@@ -116,13 +117,18 @@ class _EncoderComponent(Component):
         self._encoder_strategy.setv(encoder_strategy)
 
     def run(self) -> None:
-        while self.is_running():
+        while True:
+            time.sleep(SLEEP_TIME)
+            with self.running as is_running:
+                if not is_running:
+                    break
+
             try:
                 frame = self._input_queue.get(timeout=SLEEP_TIME)
             except queue.Empty:
                 continue
-            encoded_data = self._encoder_strategy.getv().encode_frame(self._width, self._height, frame)
 
+            encoded_data = self._encoder_strategy.getv().encode_frame(self._width, self._height, frame)
             # If encoded_data is available, it means the encoding strategy has
             # enough data to produce an encoded frame. If not, it will wait
             # for more data before outputting an encoded frame.
@@ -167,17 +173,23 @@ class _StreamSenderComponent(Component):
         return f"SocketWriterComponent(width={self._width}, height={self._height}, event={self._sync_event.is_set()})"
 
     def run(self) -> None:
-        while self.is_running():
-            try:
-                encoded_data = self._input_queue.get(timeout=SLEEP_TIME)
-            except queue.Empty:
-                continue
-            self._sync_event.set()
-            packet = VideoContainerDataPacketFactory.create_packet(self._width, self._height, encoded_data)
-            try:
-                self._socket_writer.write_packet(packet)
-            except ConnectionError:
-                pass
+        while True:
+            time.sleep(SLEEP_TIME)
+            with self.running as is_running:
+                if not is_running:
+                    break
+
+                try:
+                    encoded_data = self._input_queue.get(timeout=SLEEP_TIME)
+                except queue.Empty:
+                    continue
+
+                self._sync_event.set()
+                packet = VideoContainerDataPacketFactory.create_packet(self._width, self._height, encoded_data)
+                try:
+                    self._socket_writer.write_packet(packet)
+                except ConnectionError:
+                    pass
 
     def stop(self):
         super().stop()
@@ -219,7 +231,7 @@ class AbstractPipeline(ABC):
                 component.stop()
             for component, thread in zip(self.get_pipeline(), self._threads):
                 print(f"Joining thread for '{component}'")
-                thread.join()
+                # thread.join()
                 print(f"Joined thread for '{component}'")
             self._threads = []
         else:
@@ -339,12 +351,18 @@ class _StreamReaderComponent(Component):
         return f"SocketReaderComponent()"
 
     def run(self) -> None:
-        while self.is_running():
-            video_data = self._stream_packet_processor.get_packet_data(PacketType.VIDEO_DATA)
-            if video_data:
-                self.output_queue.put(video_data)
-            else:
-                time.sleep(0.01)
+        while True:
+            time.sleep(SLEEP_TIME)
+            with self.running as is_running:
+                if not is_running:
+                    break
+
+                video_data = self._stream_packet_processor.get_packet_data(PacketType.VIDEO_DATA)
+                if video_data:
+                    try:
+                        self.output_queue.put(video_data, block=False)
+                    except queue.Full:
+                        continue
 
 
 class _DecoderComponent(Component):
@@ -378,14 +396,22 @@ class _DecoderComponent(Component):
         self._decoder_strategy.setv(decoder_strategy)
 
     def run(self) -> None:
-        while self.is_running():
-            try:
-                video_data: MouseMoveData = self._input_queue.get(block=False)
-            except queue.Empty:
-                time.sleep(0.01)
-                continue
-            decoded_frame = self._decoder_strategy.getv().decode_packet(video_data)
-            self.output_queue.put((video_data, decoded_frame))
+        while True:
+            time.sleep(SLEEP_TIME)
+            with self.running as is_running:
+                if not is_running:
+                    break
+
+                try:
+                    video_data: MouseMoveData = self._input_queue.get(block=False)
+                except queue.Empty:
+                    continue
+
+                decoded_frame = self._decoder_strategy.getv().decode_packet(video_data)
+                try:
+                    self.output_queue.put((video_data, decoded_frame), block=False)
+                except queue.Full:
+                    continue
 
 
 class ReadDecodePipeline(AbstractPipeline):

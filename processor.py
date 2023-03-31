@@ -28,7 +28,7 @@ class StreamPacketProcessor:
 
     def stop(self):
         self._running.setv(False)
-        self._thread.join()
+        # self._thread.join()
 
     def get_packet_data(self, packet_type: PacketType) -> Union[None, MouseMoveData, MouseClickData, KeyboardData]:
         try:

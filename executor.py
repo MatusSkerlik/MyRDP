@@ -21,7 +21,7 @@ class CommandExecutor:
 
     def stop(self):
         self._running.setv(False)
-        self._thread.join()
+        # self._thread.join()
 
     def _run(self):
         while self._running.getv():

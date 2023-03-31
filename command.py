@@ -90,7 +90,7 @@ class KeyboardEventCommand(Command):
 
     def execute(self, *args, **kwargs):
         state = self._keyboard_event.get_state()
-        key = self._keyboard_event.get_key().value
+        key = self._keyboard_event.get_key()
 
         if state == ButtonState.PRESS:
             pyautogui.keyDown(chr(key))

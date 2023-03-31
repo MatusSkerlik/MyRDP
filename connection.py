@@ -12,6 +12,7 @@ class Connection(ABC):
     def __init__(self, runnable: Callable) -> None:
         self.running = AutoLockingValue(False)
         self.initialized = threading.Event()
+        self.initialized.clear()
         self.socket: Union[None, socket.socket] = None
         self.thread: Union[None, threading.Thread] = threading.Thread(target=runnable)
         self.thread.daemon = True
@@ -63,7 +64,7 @@ class Connection(ABC):
             self.socket.close()
         # Free waiters
         self.initialized.set()
-        self.thread.join()
+        # self.thread.join()
 
 
 class AutoReconnectServer(Connection):
@@ -87,24 +88,35 @@ class AutoReconnectServer(Connection):
         self._retry_timeout = retry_timeout
 
     def _accept(self):
-        while self.running.getv():
-            if not self.initialized.is_set():
-                try:
-                    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    server_socket.bind((self._host, self._port))
-                    server_socket.listen(self._backlog)
-                    self.socket, client_address = server_socket.accept()
-                    self.socket.setblocking(True)
-                    self.initialized.set()
+        while True:
+            time.sleep(0.01)
+            with self.running as is_running:
+                if not is_running:
+                    break
 
-                    # Close server socket after obtaining client
-                    server_socket.close()
-                    print(f"Connection from {client_address}")
-                except socket.error as e:
+                if not self.initialized.is_set():
+                    try:
+                        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        server_socket.settimeout(1)
+                        server_socket.bind((self._host, self._port))
+                        server_socket.listen(self._backlog)
+                        if self.socket is not None:
+                            self.socket.close()
+                        self.socket, client_address = server_socket.accept()
+                        self.socket.setblocking(True)
+                        self.initialized.set()
+
+                        # Close server socket after obtaining client
+                        server_socket.close()
+                        print(f"Connection from {client_address}")
+                    except socket.timeout:
+                        continue
+                    except socket.error as e:
+                        self.initialized.clear()
+                        print(f"Accept error: {e}")
+                elif self.socket.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR) != 0:
+                    # There is error with socket
                     self.initialized.clear()
-                    print(f"Accept error: {e}")
-            else:
-                time.sleep(self._retry_timeout)
 
 
 class AutoReconnectClient(Connection):
@@ -125,20 +137,28 @@ class AutoReconnectClient(Connection):
         self._retry_interval = retry_interval
 
     def _connect(self):
-        while self.running.getv():
-            if not self.initialized.is_set():
-                try:
-                    if self.socket is not None:
-                        self.socket.close()
-                    self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    self.socket.connect((self._host, self._port))
-                    self.socket.setblocking(True)
-                    self.initialized.set()
-                    print(f"Connected to {self._host}:{self._port}")
-                except socket.error as e:
-                    print(f"Connect error: {e}")
-                    print(f"Retrying in {self._retry_interval} seconds...")
+        while True:
+            time.sleep(0.01)
+            with self.running as is_running:
+                if not is_running:
+                    break
+
+                if not self.initialized.is_set():
+                    try:
+                        if self.socket is not None:
+                            self.socket.close()
+                        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        self.socket.connect((self._host, self._port))
+                        self.socket.setblocking(True)
+                        self.initialized.set()
+                        print(f"Connected to {self._host}:{self._port}")
+                    except socket.timeout:
+                        continue
+                    except socket.error as e:
+                        print(f"Connect error: {e}")
+                        print(f"Retrying in {self._retry_interval} seconds...")
+                        self.initialized.clear()
+                        time.sleep(self._retry_interval)
+                elif self.socket.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR) != 0:
+                    # There is error with socket
                     self.initialized.clear()
-                    time.sleep(self._retry_interval)
-            else:
-                time.sleep(self._retry_interval)
