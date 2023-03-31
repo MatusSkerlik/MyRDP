@@ -127,50 +127,51 @@ class SocketDataReader(BytesReader):
             return False
 
     def read_packet(self) -> Tuple[PacketType, AbstractDataObject]:
-        try:
-            packet_type = PacketType(self.read_byte())
-        except ValueError:
-            # Synchronization error
-            while not self._seek_to_end_of_sync_packet():
-                self._ensure_data(self._buffer_size)
-            packet_type = PacketType(self.read_byte())
+        while True:
+            try:
+                packet_type = PacketType(self.read_byte())
+            except ValueError:
+                # Synchronization error
+                while not self._seek_to_end_of_sync_packet():
+                    self._ensure_data(self._buffer_size)
+                continue
 
-        try:
-            if packet_type == PacketType.VIDEO_DATA:
-                width = self.read_int()
-                height = self.read_int()
-                frame_packet = self.read_bytes()
+            try:
+                if packet_type == PacketType.VIDEO_DATA:
+                    width = self.read_int()
+                    height = self.read_int()
+                    frame_packet = self.read_bytes()
 
-                # Seek to the start of frame packet, -4 represents byte array size
-                self.buffer.seek(self.buffer.tell() - len(frame_packet))
+                    # Seek to the start of frame packet, -4 represents byte array size
+                    self.buffer.seek(self.buffer.tell() - len(frame_packet))
 
-                encoder_type = self.read_int()
-                frame_type = self.read_int()
-                encoded_frame = self.read_bytes()
+                    encoder_type = self.read_int()
+                    frame_type = self.read_int()
+                    encoded_frame = self.read_bytes()
 
-                return packet_type, VideoData(width, height, encoder_type, frame_type, encoded_frame)
+                    return packet_type, VideoData(width, height, encoder_type, frame_type, encoded_frame)
 
-            elif packet_type == PacketType.MOUSE_MOVE:
-                x = self.read_int()
-                y = self.read_int()
+                elif packet_type == PacketType.MOUSE_MOVE:
+                    x = self.read_int()
+                    y = self.read_int()
 
-                return packet_type, MouseMoveData(x, y)
+                    return packet_type, MouseMoveData(x, y)
 
-            elif packet_type == PacketType.MOUSE_CLICK:
-                button = MouseButton(self.read_byte())
-                state = ButtonState(self.read_byte())
-                x = self.read_int()
-                y = self.read_int()
+                elif packet_type == PacketType.MOUSE_CLICK:
+                    button = MouseButton(self.read_byte())
+                    state = ButtonState(self.read_byte())
+                    x = self.read_int()
+                    y = self.read_int()
 
-                return packet_type, MouseClickData(x, y, button, state)
+                    return packet_type, MouseClickData(x, y, button, state)
 
-            elif packet_type == PacketType.KEYBOARD_EVENT:
-                key_code = ASCIIEnum(self.read_int())
-                state = ButtonState(self.read_byte())
+                elif packet_type == PacketType.KEYBOARD_EVENT:
+                    key_code = ASCIIEnum(self.read_int())
+                    state = ButtonState(self.read_byte())
 
-                return packet_type, KeyboardData(key_code, state)
-            else:
-                raise NotImplementedError
+                    return packet_type, KeyboardData(key_code, state)
+                else:
+                    raise NotImplementedError
 
-        finally:
-            self._flush_read_data()
+            finally:
+                self._flush_read_data()
