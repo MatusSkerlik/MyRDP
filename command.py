@@ -61,7 +61,6 @@ class MouseMoveCommand(Command):
             pyautogui.moveTo(x, y)
         except pyautogui.FailSafeException:
             pass
-        print(f"Moving cursor to: ({x},{y})")
 
 
 class MouseClickCommand(Command):
@@ -74,9 +73,9 @@ class MouseClickCommand(Command):
         state, button = self._mouse_click.get_state(), self._mouse_click.get_button()
 
         if button == MouseButton.MIDDLE_UP:
-            pyautogui.scroll(1)
+            pyautogui.scroll(0.5)
         elif button == MouseButton.MIDDLE_DOWN:
-            pyautogui.scroll(-1)
+            pyautogui.scroll(-0.5)
         elif button in (MouseButton.LEFT, MouseButton.RIGHT):
             pyautogui.mouseDown(x, y, button.name.lower()) if state == ButtonState.PRESS \
                 else pyautogui.mouseUp(x, y, button.name.lower())

@@ -133,3 +133,19 @@ class TextLayout(Layout):
 
     def render(self, screen):
         screen.blit(self._surface, self.position)
+
+
+class MouseCoordinates:
+    def __init__(self, font_size: int = 20, color: Tuple[int, int, int] = (255, 255, 255)):
+        self.font = pygame.font.Font(None, font_size)
+        self.color = color
+
+    def render(self, screen: pygame.Surface):
+        # Get the mouse position
+        x, y = pygame.mouse.get_pos()
+
+        # Render the mouse coordinates as text
+        coord_text = self.font.render(f"({x}, {y})", True, self.color)
+
+        # Draw the text on the screen at the mouse position
+        screen.blit(coord_text, (x, y))

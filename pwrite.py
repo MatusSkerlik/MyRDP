@@ -13,7 +13,7 @@ class SocketDataWriter:
         _connection (Connection): The connection object for the socket.
     """
 
-    def __init__(self, connection: Connection, sync_packet_timeout=1):
+    def __init__(self, connection: Connection, sync_packet_timeout=0.5):
         self._connection = connection
         self._sync_packet_timeout = sync_packet_timeout
         self._last_sync_packet = time.time()

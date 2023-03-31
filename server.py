@@ -27,8 +27,8 @@ class Server:
     Attributes:
         _host (str): The server's host address.
         _port (int): The server's port number.
-        _width (int): The width of the pygame window.
-        _height (int): The height of the pygame window.
+        _window_width (int): The width of the pygame window.
+        _window_height (int): The height of the pygame window.
         _fps (int): The desired frame rate for receiving and displaying the video.
         _caption (str): The caption of the pygame window.
         _running (AutoLockingValue): A boolean flag to indicate if the server is running.
@@ -50,14 +50,17 @@ class Server:
         self._host = host
         self._port = port
 
-        self._width = width
-        self._height = height
+        self._window_width = width
+        self._window_height = height
         self._client_width = None
         self._client_height = None
+        self._scaled_width = None
+        self._scaled_height = None
         self._x_offset = None
         self._y_offset = None
         self._fps = fps
         self._caption = caption
+        self._last_image = None
 
         self._running = AutoLockingValue(False)
         self._connection = AutoReconnectServer(host, port)
@@ -80,7 +83,7 @@ class Server:
         self._stream_packet_processor.start()
 
         pygame.init()
-        screen = pygame.display.set_mode((self._width, self._height), pygame.RESIZABLE)
+        screen = pygame.display.set_mode((self._window_width, self._window_height), pygame.RESIZABLE)
         pygame.display.set_caption(self._caption)
         clock = pygame.time.Clock()
         pipe_frame_rate = FrameRateCalculator(1)
@@ -91,16 +94,16 @@ class Server:
             # Handle events
             for event in pygame.event.get():
                 if event.type == pygame.MOUSEMOTION:
-                    x, y = event.pos
-                    if self._if_event_sent_is_possible() and self._if_cords_domain_in_range(x, y):
-                        x, y = self._recalculate_cords(x, y)
+                    _x, _y = event.pos
+                    if self._if_event_sent_is_possible() and self._if_cords_domain_in_range(_x, _y):
+                        x, y = self._recalculate_cords(_x, _y)
                         cmd = MouseMoveNetworkCommand(self._socket_writer, x, y)
-                        cmd.execute()
+                        # cmd.execute()
 
                 elif event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.MOUSEBUTTONUP:
-                    x, y = event.pos
-                    if self._if_event_sent_is_possible() and self._if_cords_domain_in_range(x, y):
-                        x, y = self._recalculate_cords(*event.pos)
+                    _x, _y = event.pos
+                    if self._if_event_sent_is_possible() and self._if_cords_domain_in_range(_x, _y):
+                        x, y = self._recalculate_cords(_x, _y)
 
                         if event.button == pygame.BUTTON_LEFT:
                             button = MouseButton.LEFT
@@ -128,18 +131,18 @@ class Server:
                     cmd.execute()
 
                 elif event.type == pygame.VIDEORESIZE:
-                    self._width, self._height = event.w, event.h
+                    self._window_width, self._window_height = event.w, event.h
 
                 elif event.type == pygame.QUIT:
                     self.stop()
+
+            screen.fill((0, 0, 0))
 
             # Receive data object
             data = self._read_decode_pipeline.get()
 
             # If data from pipeline are available
             if data is not None:
-                screen.fill((0, 0, 0))
-
                 # Track fps of pipeline
                 pipe_frame_rate.tick()
 
@@ -170,22 +173,30 @@ class Server:
                 self._x_offset = x_offset
                 self._y_offset = y_offset
 
+                # Update scaled width & height
+                self._scaled_width = new_width
+                self._scaled_height = new_height
+
                 # Rescale frame
-                img_scaled = pygame.transform.scale(img, (new_width, new_height))
+                self._last_image = pygame.transform.scale(img, (new_width, new_height))
 
-                # Render frame
-                screen.blit(img_scaled, (x_offset, y_offset))
+            # Render frame
+            if self._last_image:
+                screen.blit(self._last_image, (self._x_offset, self._y_offset))
 
-                # Render FPS, Pipeline FPS and bandwidth
-                bandwidth = self._bandwidth_monitor.get_bandwidth()
-                layout = FlexboxLayout(mode="column", align_items="start")
-                layout.add_child(TextLayout(f"FPS: {clock.get_fps():.2f}", font_size=20))
-                layout.add_child(TextLayout(f"Pipeline FPS: {pipe_frame_rate.get_fps():.2f}", font_size=20))
-                layout.add_child(TextLayout(f"Bandwidth: {BandwidthFormatter.format(bandwidth)}", font_size=20))
-                layout.render(screen)
+            # Render FPS, Pipeline FPS and bandwidth
+            bandwidth = self._bandwidth_monitor.get_bandwidth()
+            layout = FlexboxLayout(mode="column", align_items="start")
+            layout.add_child(TextLayout(f"FPS: {clock.get_fps():.2f}", font_size=20))
+            layout.add_child(TextLayout(f"Pipeline FPS: {pipe_frame_rate.get_fps():.2f}", font_size=20))
+            layout.add_child(TextLayout(f"Bandwidth: {BandwidthFormatter.format(bandwidth)}", font_size=20))
+            layout.render(screen)
 
-                # Render apply
-                pygame.display.flip()
+            # Render mouse coordinates
+            # MouseCoordinates().render(screen)
+
+            # Render apply
+            pygame.display.flip()
 
         pygame.quit()
 
@@ -198,15 +209,15 @@ class Server:
     def _calculate_ratio(self, width: int, height: int) -> Tuple[int, int, int, int]:
         aspect_ratio = float(width) / float(height)
 
-        new_height = self._height
+        new_height = self._window_height
         new_width = int(aspect_ratio * new_height)
 
-        if new_width > self._width:
-            new_width = self._width
+        if new_width > self._window_width:
+            new_width = self._window_width
             new_height = int(new_width / aspect_ratio)
 
-        x_offset = (self._width - new_width) // 2
-        y_offset = (self._height - new_height) // 2
+        x_offset = (self._window_width - new_width) // 2
+        y_offset = (self._window_height - new_height) // 2
 
         return x_offset, y_offset, new_width, new_height
 
@@ -214,16 +225,18 @@ class Server:
         return (self._client_width is not None
                 and self._client_height is not None
                 and self._x_offset is not None
-                and self._y_offset is not None)
+                and self._y_offset is not None
+                and self._scaled_width is not None
+                and self._scaled_height is not None)
 
     def _if_cords_domain_in_range(self, x: int, y: int):
-        return (self._x_offset <= x <= self._width - self._x_offset * 2
-                and self._y_offset <= y <= self._height - self._y_offset * 2)
+        return (self._x_offset <= x <= self._window_width - self._x_offset * 2
+                and self._y_offset <= y <= self._window_height - self._y_offset * 2)
 
     def _recalculate_cords(self, x: int, y: int):
         return (
-            int((x - self._x_offset) * (self._client_width / self._width)),
-            int((y - self._y_offset) * (self._client_height / self._height))
+            int((x - self._x_offset) * (self._client_width / self._scaled_width)),
+            int((y - self._y_offset) * (self._client_height / self._scaled_height))
         )
 
 
