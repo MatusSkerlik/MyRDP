@@ -3,11 +3,12 @@ from typing import Tuple
 
 import pygame
 
-from bandwidth import BandwidthMonitor, BandwidthStateMachine, BandwidthFormatter
+from bandwidth import BandwidthMonitor
 from command import MouseMoveNetworkCommand, MouseClickNetworkCommand, KeyboardEventNetworkCommand
 from connection import AutoReconnectServer
-from enums import MouseButton, ButtonState, ASCIIEnum
+from enums import MouseButton, ButtonState
 from fps import FrameRateCalculator
+from keyboard import KEY_MAPPING
 from lock import AutoLockingValue
 from pipeline import ReadDecodePipeline
 from pread import SocketDataReader
@@ -70,7 +71,6 @@ class Server:
         self._stream_packet_processor = PacketProcessor(self._socket_reader)
         self._read_decode_pipeline = ReadDecodePipeline(fps, self._stream_packet_processor)
         self._bandwidth_monitor = BandwidthMonitor()
-        self._bandwidth_state_machine = BandwidthStateMachine()
 
     def run(self) -> None:
         if self._running:
@@ -108,9 +108,9 @@ class Server:
                         elif event.button == pygame.BUTTON_RIGHT:
                             button = MouseButton.RIGHT
                         elif event.button == pygame.BUTTON_WHEELUP:
-                            button = MouseButton.MIDDLE_UP
+                            button = MouseButton.MIDDLE_WHEEL_UP
                         elif event.button == pygame.BUTTON_WHEELDOWN:
-                            button = MouseButton.MIDDLE_DOWN
+                            button = MouseButton.MIDDLE_WHEEL_DOWN
                         else:
                             continue
 
@@ -120,8 +120,8 @@ class Server:
 
                 elif event.type == pygame.KEYDOWN or event.type == pygame.KEYUP:
                     try:
-                        key_code = ASCIIEnum(event.key)
-                    except ValueError:
+                        key_code = KEY_MAPPING[event.key]
+                    except KeyError:
                         # TODO we are skipping not supported keys
                         continue
                     state = ButtonState.PRESS if event.type == pygame.KEYDOWN else ButtonState.RELEASE
@@ -157,9 +157,6 @@ class Server:
                 # Update minute bandwidth statistics
                 self._bandwidth_monitor.register_received_bytes(len(data))
 
-                # Update bandwidth state machine
-                self._bandwidth_state_machine.update_state(self._bandwidth_monitor.get_bandwidth())
-
                 # Render only last frame
                 frame = frames[-1]
                 img = pygame.image.frombuffer(frame, (width, height), "RGB")
@@ -183,11 +180,11 @@ class Server:
                 screen.blit(self._last_image, (self._x_offset, self._y_offset))
 
             # Render FPS, Pipeline FPS and bandwidth
-            bandwidth = self._bandwidth_monitor.get_bandwidth()
+            bandwidth = self._bandwidth_monitor.get_bandwidth_str()
             layout = FlexboxLayout(mode="column", align_items="start")
             layout.add_child(TextLayout(f"FPS: {clock.get_fps():.2f}", font_size=20))
             layout.add_child(TextLayout(f"Pipeline FPS: {pipe_frame_rate.get_fps():.2f}", font_size=20))
-            layout.add_child(TextLayout(f"Bandwidth: {BandwidthFormatter.format(bandwidth)}", font_size=20))
+            layout.add_child(TextLayout(f"Bandwidth: {bandwidth}", font_size=20))
             layout.render(screen)
 
             # Render mouse coordinates

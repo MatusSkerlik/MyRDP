@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from enums import PacketType, MouseButton, ButtonState, ASCIIEnum
+from enums import PacketType, MouseButton, ButtonState
 from packet import Packet
 
 
@@ -58,7 +58,7 @@ class MouseMovePacketFactory(AbstractPacketFactory):
 class KeyboardEventPacketFactory(AbstractPacketFactory):
 
     @staticmethod
-    def create_packet(key_code: ASCIIEnum, state: ButtonState) -> Packet:
+    def create_packet(key_code: str, state: ButtonState) -> Packet:
         """
         Create a keyboard event packet.
 
@@ -68,7 +68,7 @@ class KeyboardEventPacketFactory(AbstractPacketFactory):
         """
         packet = Packet()
         packet.add_byte(PacketType.KEYBOARD_EVENT)
-        packet.add_int(key_code)
+        packet.add_string(key_code)
         packet.add_byte(state)
         return packet
 

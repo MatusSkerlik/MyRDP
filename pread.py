@@ -4,7 +4,7 @@ from typing import Tuple
 
 from connection import Connection
 from dao import MouseMoveData, AbstractDataObject, VideoData, MouseClickData, KeyboardData
-from enums import PacketType, ButtonState, MouseButton, ASCIIEnum
+from enums import PacketType, ButtonState, MouseButton
 
 
 class InvalidPacketType(Exception):
@@ -167,7 +167,7 @@ class SocketDataReader(BytesReader):
                     return packet_type, MouseClickData(x, y, button, state)
 
                 elif packet_type == PacketType.KEYBOARD_EVENT:
-                    key_code = ASCIIEnum(self.read_int())
+                    key_code = self.read_string()
                     state = ButtonState(self.read_byte())
 
                     return packet_type, KeyboardData(key_code, state)

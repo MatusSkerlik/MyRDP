@@ -4,7 +4,7 @@ import pyautogui
 
 from connection import NoConnection
 from dao import MouseMoveData, MouseClickData, KeyboardData
-from enums import MouseButton, ButtonState, ASCIIEnum
+from enums import MouseButton, ButtonState
 from packet import Packet
 from pfactory import MouseMovePacketFactory, MouseClickPacketFactory, KeyboardEventPacketFactory
 from pwrite import SocketDataWriter
@@ -45,7 +45,7 @@ class MouseClickNetworkCommand(NetworkCommand):
 
 class KeyboardEventNetworkCommand(NetworkCommand):
 
-    def __init__(self, socket_writer: SocketDataWriter, key_code: ASCIIEnum, state: ButtonState):
+    def __init__(self, socket_writer: SocketDataWriter, key_code: str, state: ButtonState):
         packet = KeyboardEventPacketFactory.create_packet(key_code, state)
         super().__init__(socket_writer, packet)
 
@@ -73,9 +73,9 @@ class MouseClickCommand(Command):
         x, y = self._mouse_click.get_x(), self._mouse_click.get_y()
         state, button = self._mouse_click.get_state(), self._mouse_click.get_button()
 
-        if button == MouseButton.MIDDLE_UP:
+        if button == MouseButton.MIDDLE_WHEEL_UP:
             pyautogui.scroll(1, x, y)
-        elif button == MouseButton.MIDDLE_DOWN:
+        elif button == MouseButton.MIDDLE_WHEEL_DOWN:
             pyautogui.scroll(-1, x, y)
         elif button in (MouseButton.LEFT, MouseButton.RIGHT):
             pyautogui.mouseDown(x, y, button.name.lower()) if state == ButtonState.PRESS \
@@ -92,8 +92,7 @@ class KeyboardEventCommand(Command):
     def execute(self, *args, **kwargs):
         state = self._keyboard_event.get_state()
         key = self._keyboard_event.get_key()
-
         if state == ButtonState.PRESS:
-            pyautogui.keyDown(chr(key))
+            pyautogui.keyDown(key)
         elif state == ButtonState.RELEASE:
-            pyautogui.keyUp(chr(key))
+            pyautogui.keyUp(key)

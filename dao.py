@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from enums import MouseButton, ButtonState, ASCIIEnum
+from enums import MouseButton, ButtonState
 from packet import Packet
 from pfactory import VideoContainerDataPacketFactory, MouseMovePacketFactory, MouseClickPacketFactory, \
     KeyboardEventPacketFactory
@@ -80,7 +80,7 @@ class MouseClickData(AbstractDataObject):
 
 
 class KeyboardData(AbstractDataObject):
-    def __init__(self, key: ASCIIEnum, state: ButtonState):
+    def __init__(self, key: str, state: ButtonState):
         self._key = key
         self._state = state
 
