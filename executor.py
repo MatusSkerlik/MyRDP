@@ -18,7 +18,6 @@ class CommandExecutor(Task):
 
     def run(self):
         while self.running.getv():
-            time.sleep(0.005)
 
             mouse_move: MouseMoveData = self._stream_packet_processor.get_packet_data(PacketType.MOUSE_MOVE)
             if mouse_move:
@@ -34,3 +33,5 @@ class CommandExecutor(Task):
             if keyboard_data:
                 cmd = KeyboardEventCommand(keyboard_data)
                 cmd.execute()
+
+            time.sleep(0.005)

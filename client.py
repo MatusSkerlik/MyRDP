@@ -48,7 +48,7 @@ class Client:
         self._connection = AutoReconnectClient(host, port)
         self._socket_reader = SocketDataReader(self._connection)
         self._socket_writer = SocketDataWriter(self._connection)
-        self._stream_packet_processor = StreamPacketProcessor(self._socket_reader, self._socket_writer)
+        self._stream_packet_processor = StreamPacketProcessor(self._socket_reader)
         self._command_executor = CommandExecutor(self._stream_packet_processor)
         self._pipeline = CaptureEncodeSendPipeline(fps, self._socket_writer)
 

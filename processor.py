@@ -3,20 +3,19 @@ import time
 from queue import Queue
 from typing import Dict, Union
 
+from connection import NoDataAvailableError
 from dao import MouseMoveData, MouseClickData, KeyboardData
 from enums import PacketType
 from lock import AutoLockingValue
 from pread import SocketDataReader
-from pwrite import SocketDataWriter
 from thread import Task
 
 
 class StreamPacketProcessor(Task):
-    def __init__(self, reader: SocketDataReader, writer: SocketDataWriter):
+    def __init__(self, reader: SocketDataReader):
         super().__init__()
 
         self._socket_data_reader = reader
-        self._socket_data_writer = writer
         self._packet_queues: AutoLockingValue[Dict[PacketType, Queue]] = (
             AutoLockingValue({ptype: Queue() for ptype in PacketType})
         )
@@ -36,5 +35,11 @@ class StreamPacketProcessor(Task):
                 except queue.Full:
                     pass
             except ConnectionError:
+                # There is connection lost
+                time.sleep(0.25)
+            except NoDataAvailableError:
+                # There are no packets in stream available
                 time.sleep(0.01)
+            except RuntimeError:
+                # Application shutdown
                 pass

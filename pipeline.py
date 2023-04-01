@@ -56,11 +56,7 @@ class _CaptureComponent(Component):
         self._capture_strategy.setv(capture_strategy)
 
     def run(self) -> None:
-        while True:
-            with self.running as is_running:
-                if not is_running:
-                    break
-
+        while self.running.getv():
             if self._sync_event.wait(SLEEP_TIME):
                 screen_shot = self._capture_strategy.getv().capture_screen()
                 if screen_shot:
@@ -110,14 +106,10 @@ class _EncoderComponent(Component):
         self._encoder_strategy.setv(encoder_strategy)
 
     def run(self) -> None:
-        while True:
+        while self.running.getv():
             time.sleep(SLEEP_TIME)
-            with self.running as is_running:
-                if not is_running:
-                    break
-
             try:
-                frame = self._input_queue.get(timeout=SLEEP_TIME)
+                frame = self._input_queue.get_nowait()
             except queue.Empty:
                 continue
 
@@ -166,23 +158,24 @@ class _StreamSenderComponent(Component):
         return f"SocketWriterComponent(width={self._width}, height={self._height}, event={self._sync_event.is_set()})"
 
     def run(self) -> None:
-        while True:
+        while self.running.getv():
             time.sleep(SLEEP_TIME)
-            with self.running as is_running:
-                if not is_running:
-                    break
+            try:
+                encoded_data = self._input_queue.get(timeout=SLEEP_TIME)
+            except queue.Empty:
+                continue
 
-                try:
-                    encoded_data = self._input_queue.get(timeout=SLEEP_TIME)
-                except queue.Empty:
-                    continue
-
-                self._sync_event.set()
-                packet = VideoContainerDataPacketFactory.create_packet(self._width, self._height, encoded_data)
-                try:
-                    self._socket_writer.write_packet(packet)
-                except ConnectionError:
-                    pass
+            self._sync_event.set()
+            packet = VideoContainerDataPacketFactory.create_packet(self._width, self._height, encoded_data)
+            try:
+                self._socket_writer.write_packet(packet)
+            except ConnectionError:
+                # Connection lost
+                time.sleep(0.25)
+                continue
+            except RuntimeError:
+                # Application close
+                pass
 
     def stop(self):
         super().stop()
@@ -324,18 +317,14 @@ class _StreamReaderComponent(Component):
         return f"SocketReaderComponent()"
 
     def run(self) -> None:
-        while True:
+        while self.running.getv():
             time.sleep(SLEEP_TIME)
-            with self.running as is_running:
-                if not is_running:
-                    break
-
-                video_data = self._stream_packet_processor.get_packet_data(PacketType.VIDEO_DATA)
-                if video_data:
-                    try:
-                        self.output_queue.put(video_data, block=False)
-                    except queue.Full:
-                        continue
+            video_data = self._stream_packet_processor.get_packet_data(PacketType.VIDEO_DATA)
+            if video_data:
+                try:
+                    self.output_queue.put_nowait(video_data)
+                except queue.Full:
+                    continue
 
 
 class _DecoderComponent(Component):
@@ -369,22 +358,18 @@ class _DecoderComponent(Component):
         self._decoder_strategy.setv(decoder_strategy)
 
     def run(self) -> None:
-        while True:
+        while self.running.getv():
             time.sleep(SLEEP_TIME)
-            with self.running as is_running:
-                if not is_running:
-                    break
+            try:
+                video_data: MouseMoveData = self._input_queue.get_nowait()
+            except queue.Empty:
+                continue
 
-                try:
-                    video_data: MouseMoveData = self._input_queue.get(block=False)
-                except queue.Empty:
-                    continue
-
-                decoded_frame = self._decoder_strategy.getv().decode_packet(video_data)
-                try:
-                    self.output_queue.put((video_data, decoded_frame), block=False)
-                except queue.Full:
-                    continue
+            decoded_frame = self._decoder_strategy.getv().decode_packet(video_data)
+            try:
+                self.output_queue.put_nowait((video_data, decoded_frame))
+            except queue.Full:
+                continue
 
 
 class ReadDecodePipeline(AbstractPipeline):
