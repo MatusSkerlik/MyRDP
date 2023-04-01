@@ -62,6 +62,7 @@ class Connection(Task, ABC):
 
     def stop(self):
         if self.socket:
+            self.socket.setblocking(False)
             self.socket.close()
             self.socket = None
 
@@ -101,6 +102,7 @@ class AutoReconnectServer(Connection):
                 try:
                     self.socket, client_address = self._server_socket.accept()
                 except OSError as e:
+                    self._server_socket.setblocking(False)
                     self._server_socket.close()
                     self._server_socket = None
                     self.socket = None
@@ -109,6 +111,7 @@ class AutoReconnectServer(Connection):
                     continue
 
                 # Close server socket after obtaining client
+                self._server_socket.setblocking(False)
                 self._server_socket.close()
                 self._server_socket = None
 
@@ -124,6 +127,7 @@ class AutoReconnectServer(Connection):
         # If we are listening for connections, and we want to close the thread
         # Will raise OSError in thread
         if self._server_socket:
+            self._server_socket.setblocking(False)
             self._server_socket.close()
         super().stop()
 

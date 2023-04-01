@@ -30,17 +30,23 @@ class PacketProcessor(Task):
     def run(self):
         while self.running.getv():
             try:
+                print("Before processor read_packet")
                 packet_type, data_object = self._socket_data_reader.read_packet()
+                print("After processor read_packet")
                 try:
                     self._packet_queues.get(packet_type).put_nowait(data_object)
                 except queue.Full:
                     pass
             except NoConnection:
                 # There is connection lost
-                time.sleep(0.25)
+                time.sleep(0.01)
+                print("No connection")
             except NoDataAvailableError:
                 # There are no packets in stream available
                 time.sleep(0.01)
+                print("No data available")
             except RuntimeError:
                 # Application shutdown
+                print("Runtime error")
                 pass
+        print("PacketProcessor thread exit")

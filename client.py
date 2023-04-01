@@ -81,11 +81,11 @@ class Client:
     pygame.quit()
 
     def stop(self):
+        self._running = False
         self._connection.stop()
+        self._command_executor.stop()
         self._stream_packet_processor.stop()
         self._pipeline.stop()
-        self._command_executor.stop()
-        self._running = False
 
 
 HOST = (os.getenv("RDP_SERVER_IP") or "127.0.0.1")

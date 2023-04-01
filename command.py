@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 
 import pyautogui
 
+from connection import NoConnection
 from dao import MouseMoveData, MouseClickData, KeyboardData
 from enums import MouseButton, ButtonState, ASCIIEnum
 from packet import Packet
@@ -23,7 +24,7 @@ class NetworkCommand(Command):
     def execute(self, *args, **kwargs):
         try:
             self._socket_writer.write_packet(self._packet)
-        except ConnectionError:
+        except NoConnection:
             # There is no connection, ignore
             pass
 
@@ -73,9 +74,9 @@ class MouseClickCommand(Command):
         state, button = self._mouse_click.get_state(), self._mouse_click.get_button()
 
         if button == MouseButton.MIDDLE_UP:
-            pyautogui.scroll(0.5)
+            pyautogui.scroll(1, x, y)
         elif button == MouseButton.MIDDLE_DOWN:
-            pyautogui.scroll(-0.5)
+            pyautogui.scroll(-1, x, y)
         elif button in (MouseButton.LEFT, MouseButton.RIGHT):
             pyautogui.mouseDown(x, y, button.name.lower()) if state == ButtonState.PRESS \
                 else pyautogui.mouseUp(x, y, button.name.lower())

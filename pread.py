@@ -133,6 +133,7 @@ class SocketDataReader(BytesReader):
             except ValueError:
                 # Synchronization error
                 while not self._seek_to_end_of_sync_packet():
+                    self._flush_read_data()
                     self._ensure_data(self._buffer_size)
                 continue
 

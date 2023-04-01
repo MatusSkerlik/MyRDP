@@ -199,10 +199,10 @@ class Server:
         pygame.quit()
 
     def stop(self) -> None:
+        self._running = False
         self._connection.stop()
         self._stream_packet_processor.stop()
         self._read_decode_pipeline.stop()
-        self._running = False
 
     def _calculate_ratio(self, width: int, height: int) -> Tuple[int, int, int, int]:
         aspect_ratio = float(width) / float(height)
