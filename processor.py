@@ -3,7 +3,7 @@ import time
 from queue import Queue
 from typing import Dict, Union
 
-from connection import NoDataAvailableError
+from connection import NoDataAvailableError, NoConnection
 from dao import MouseMoveData, MouseClickData, KeyboardData
 from enums import PacketType
 from lock import AutoLockingValue
@@ -12,6 +12,7 @@ from thread import Task
 
 
 class StreamPacketProcessor(Task):
+
     def __init__(self, reader: SocketDataReader):
         super().__init__()
 
@@ -34,7 +35,7 @@ class StreamPacketProcessor(Task):
                     self._packet_queues.get(packet_type).put_nowait(data_object)
                 except queue.Full:
                     pass
-            except ConnectionError:
+            except NoConnection:
                 # There is connection lost
                 time.sleep(0.25)
             except NoDataAvailableError:

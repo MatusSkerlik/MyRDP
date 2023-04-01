@@ -1,3 +1,5 @@
+import os
+
 import pygame
 from pygame import QUIT
 
@@ -86,8 +88,8 @@ class Client:
         self._running = False
 
 
-HOST = "127.0.0.1"
-PORT = 8083
+HOST = (os.getenv("RDP_SERVER_IP") or "127.0.0.1")
+PORT = (os.getenv("RDP_SERVER_PORT") or 8080)
 FPS = 25
 
 if __name__ == "__main__":

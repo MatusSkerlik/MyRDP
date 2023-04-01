@@ -22,7 +22,7 @@ class NetworkCommand(Command):
 
     def execute(self, *args, **kwargs):
         try:
-            self._socket_writer.write_packet(self._packet, False)
+            self._socket_writer.write_packet(self._packet)
         except ConnectionError:
             # There is no connection, ignore
             pass

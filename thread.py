@@ -29,7 +29,7 @@ class Task:
     def stop(self):
         self.running.setv(False)
         print(f"Exiting: {self}")
-        # self.thread.join()
+        self.thread.join()
         print(f"Exited: {self}")
 
     @abstractmethod

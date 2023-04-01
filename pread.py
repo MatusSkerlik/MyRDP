@@ -95,7 +95,7 @@ class SocketDataReader(BytesReader):
         Reads data from the socket and appends it to the buffer.
         Raises a ConnectionError if the connection is closed.
         """
-        data = self._connection.read(self._buffer_size, block=True)
+        data = self._connection.read(self._buffer_size)
 
         current_pos = self.buffer.tell()
         self.buffer.seek(0, io.SEEK_END)
