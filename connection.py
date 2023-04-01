@@ -33,12 +33,16 @@ class Connection(Task, ABC):
                 def _run(data_):
                     try:
                         while len(data_) > 0:
-                            sent = self.socket.send(data_)
-                            data_ = data[sent:]
+                            try:
+                                sent = self.socket.send(data_)
+                                data_ = data[sent:]
+                            except BlockingIOError:
+                                time.sleep(0.0025)
+                                continue
                     except OSError as e:
                         # Can happen when remote host closed connection
                         self.initialized.setv(False)
-                        print(f"sendall error: {e}")
+                        print(f"send error: {e}")
                     except AttributeError:
                         # Can happen when socket was set not None ( call to stop() method )
                         pass
