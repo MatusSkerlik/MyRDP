@@ -1,5 +1,4 @@
 import socket
-import threading
 import time
 from abc import ABC
 from typing import Union
@@ -29,25 +28,12 @@ class Connection(Task, ABC):
     def write(self, data: bytes) -> None:
         if self.running.getv():
             if self.initialized.getv():
-                # Should never block, buffer have unlimited space
-                def _run(data_):
-                    try:
-                        while len(data_) > 0:
-                            try:
-                                sent = self.socket.send(data_)
-                                data_ = data[sent:]
-                            except BlockingIOError:
-                                time.sleep(0.0025)
-                                continue
-                    except OSError as e:
-                        # Can happen when remote host closed connection
-                        self.initialized.setv(False)
-                        print(f"send error: {e}")
-                    except AttributeError:
-                        # Can happen when socket was set not None ( call to stop() method )
-                        pass
-
-                threading.Thread(target=_run, args=(data,)).start()
+                try:
+                    self.socket.sendall(data)
+                except OSError as e:
+                    self.initialized.setv(False)
+                    print(f"sendall error {e}")
+                    raise NoConnection(e)
                 return
             else:
                 raise NoConnection("Connection is not established")
@@ -66,9 +52,6 @@ class Connection(Task, ABC):
                         raise OSError
                 else:
                     raise NoConnection("Connection is not established")
-            except BlockingIOError:
-                # Can happen when there is no data available
-                raise NoDataAvailableError
             except OSError as e:
                 # Can happen when remote host closed connection
                 self.initialized.setv(False)
@@ -82,7 +65,7 @@ class Connection(Task, ABC):
             self.socket.close()
             self.socket = None
 
-        # Join writing thread
+        # Join connection establishing threads
         super().stop()
 
 
@@ -117,7 +100,6 @@ class AutoReconnectServer(Connection):
                 print(f"Listening on {self._host}:{self._port}")
                 try:
                     self.socket, client_address = self._server_socket.accept()
-                    self.socket.setblocking(False)
                 except OSError as e:
                     self._server_socket.close()
                     self._server_socket = None
@@ -170,7 +152,6 @@ class AutoReconnectClient(Connection):
                     print(f"Trying to connect to {self._host}:{self._port}")
                     self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     self.socket.connect((self._host, self._port))
-                    self.socket.setblocking(False)
                     self.initialized.setv(True)
                     print(f"Connected to {self._host}:{self._port}")
                 except OSError as e:

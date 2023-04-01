@@ -11,7 +11,7 @@ from fps import FrameRateCalculator
 from lock import AutoLockingValue
 from pipeline import ReadDecodePipeline
 from pread import SocketDataReader
-from processor import StreamPacketProcessor
+from processor import PacketProcessor
 from pwrite import SocketDataWriter
 from render import FlexboxLayout, TextLayout
 
@@ -67,8 +67,8 @@ class Server:
         self._connection = AutoReconnectServer(host, port)
         self._socket_reader = SocketDataReader(self._connection, buffer_size=4096)
         self._socket_writer = SocketDataWriter(self._connection)
-        self._stream_packet_processor = StreamPacketProcessor(self._socket_reader)
-        self._read_decode_pipeline = ReadDecodePipeline(self._stream_packet_processor)
+        self._stream_packet_processor = PacketProcessor(self._socket_reader)
+        self._read_decode_pipeline = ReadDecodePipeline(fps, self._stream_packet_processor)
         self._bandwidth_monitor = BandwidthMonitor()
         self._bandwidth_state_machine = BandwidthStateMachine()
 
@@ -137,7 +137,7 @@ class Server:
             screen.fill((0, 0, 0))
 
             # Receive data object
-            data = self._read_decode_pipeline.get()
+            data = self._read_decode_pipeline.pop_result()
 
             # If data from pipeline are available
             if data is not None:
@@ -238,7 +238,7 @@ class Server:
         )
 
 
-HOST = (os.getenv("RDP_SERVER_IP") or "127.0.0.1")
+HOST = (os.getenv("RDP_SERVER_IP") or "")
 PORT = (os.getenv("RDP_SERVER_PORT") or 8085)
 FPS = 45
 

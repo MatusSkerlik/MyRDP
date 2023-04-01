@@ -6,7 +6,7 @@ from typing import List, Union, Optional, Any, Dict
 import cv2
 import numpy as np
 
-from dao import MouseMoveData
+from dao import MouseMoveData, VideoData
 
 
 class AbstractDecoderStrategy(ABC):
@@ -26,7 +26,7 @@ class DefaultDecoder:
     def __str__(self):
         return f"DefaultDecoder()"
 
-    def decode_packet(self, video_data: MouseMoveData) -> List[np.ndarray]:
+    def decode_packet(self, video_data: VideoData) -> List[np.ndarray]:
         width = video_data.get_width()
         height = video_data.get_height()
         frame_type = video_data.get_frame_type()

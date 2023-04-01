@@ -1,28 +1,28 @@
 import queue
 import threading
-import time
 from abc import ABC, abstractmethod
 from queue import Queue
-from typing import Union, List, Tuple
-
-import numpy as np
+from typing import Union, List, Any
 
 from capture import AbstractCaptureStrategy, CaptureStrategyBuilder
 from connection import NoConnection
-from dao import VideoContainerDataPacketFactory, MouseMoveData, VideoData
+from dao import VideoContainerDataPacketFactory
 from decode import DecoderStrategyBuilder, AbstractDecoderStrategy
 from encode import AbstractEncoderStrategy, EncoderStrategyBuilder
 from enums import PacketType
+from fps import FrameRateLimiter
 from lock import AutoLockingValue
-from processor import StreamPacketProcessor
+from processor import PacketProcessor
 from pwrite import SocketDataWriter
 from thread import Task
 
 SLEEP_TIME = 1 / 120
 
 
-class Component(Task, ABC):
-    pass
+class Component(ABC):
+    @abstractmethod
+    def run(self, *args) -> Union[None, bytes]:
+        pass
 
 
 class _CaptureComponent(Component):
@@ -41,29 +41,18 @@ class _CaptureComponent(Component):
             to capture the screen.
     """
 
-    def __init__(self,
-                 capture_strategy: AbstractCaptureStrategy,
-                 event: threading.Event):
+    def __init__(self, capture_strategy: AbstractCaptureStrategy, ):
         super().__init__()
-
-        self.output_queue = Queue(maxsize=1)
-        self._capture_strategy = AutoLockingValue(capture_strategy)
-        self._sync_event = event
+        self._capture_strategy = capture_strategy
 
     def __str__(self):
-        return f"CaptureComponent(event={self._sync_event.is_set()})"
+        return f"CaptureComponent()"
 
     def set_capture_strategy(self, capture_strategy: AbstractCaptureStrategy):
-        self._capture_strategy.setv(capture_strategy)
+        self._capture_strategy = capture_strategy
 
-    def run(self) -> None:
-        while self.running.getv():
-            if self._sync_event.is_set():
-                screen_shot = self._capture_strategy.getv().capture_screen()
-                if screen_shot:
-                    self.output_queue.put(screen_shot)
-                    self._sync_event.clear()
-            time.sleep(SLEEP_TIME)
+    def run(self, *args):
+        return self._capture_strategy.capture_screen()
 
 
 class _EncoderComponent(Component):
@@ -86,40 +75,24 @@ class _EncoderComponent(Component):
     def __init__(self,
                  width: int,
                  height: int,
-                 input_queue: Queue,
-                 encoder_strategy: AbstractEncoderStrategy,
-                 synchronization_event: threading.Event) -> None:
+                 encoder_strategy: AbstractEncoderStrategy) -> None:
         super().__init__()
 
         self._width = width
         self._height = height
 
-        self.output_queue = Queue(maxsize=1)
-        self._input_queue = input_queue
-        self._encoder_strategy = AutoLockingValue(encoder_strategy)
-        self._sync_event = synchronization_event
+        self._encoder_strategy = encoder_strategy
 
     def __str__(self):
-        return f"EncoderComponent(width={self._width}, height={self._height}, strategy={self._encoder_strategy.getv()})"
+        return f"EncoderComponent(width={self._width}, height={self._height}, strategy={self._encoder_strategy})"
 
     def set_encoder_strategy(self, encoder_strategy: AbstractEncoderStrategy):
-        self._encoder_strategy.setv(encoder_strategy)
+        self._encoder_strategy = encoder_strategy
 
-    def run(self) -> None:
-        while self.running.getv():
-            time.sleep(SLEEP_TIME)
-            try:
-                frame = self._input_queue.get_nowait()
-            except queue.Empty:
-                continue
-
-            encoded_data = self._encoder_strategy.getv().encode_frame(self._width, self._height, frame)
-            # If encoded_data is available, it means the encoding strategy has
-            # enough data to produce an encoded frame. If not, it will wait
-            # for more data before outputting an encoded frame.
-            if encoded_data:
-                self._sync_event.set()
-                self.output_queue.put(encoded_data)
+    def run(self, frame):
+        if frame:
+            return self._encoder_strategy.encode_frame(self._width, self._height, frame)
+        return None
 
 
 class _StreamSenderComponent(Component):
@@ -143,42 +116,31 @@ class _StreamSenderComponent(Component):
     def __init__(self,
                  width: int,
                  height: int,
-                 input_queue: Queue,
                  socket_writer: SocketDataWriter):
         super().__init__()
 
         self._width = width
         self._height = height
-
-        self._input_queue = input_queue
         self._socket_writer = socket_writer
 
     def __str__(self):
         return f"SocketWriterComponent(width={self._width}, height={self._height})"
 
-    def run(self) -> None:
-        while self.running.getv():
-            time.sleep(SLEEP_TIME)
-            try:
-                encoded_data = self._input_queue.get_nowait()
-            except queue.Empty:
-                continue
-
-            packet = VideoContainerDataPacketFactory.create_packet(self._width, self._height, encoded_data)
-            try:
-                self._socket_writer.write_packet(packet)
-            except NoConnection:
-                # Connection lost
-                # We are discarding encoded data
-                time.sleep(0.25)
-                continue
-            except RuntimeError:
-                # Application close
-                # Client should be responsible to setting running to false
-                continue
+    def run(self, encoded_frame) -> None:
+        packet = VideoContainerDataPacketFactory.create_packet(self._width, self._height, encoded_frame)
+        try:
+            self._socket_writer.write_packet(packet)
+        except NoConnection:
+            # Connection lost
+            # We are discarding encoded data
+            pass
+        except RuntimeError:
+            # Application close
+            # Client should be responsible to setting running to false
+            pass
 
 
-class AbstractPipeline(ABC):
+class AbstractPipeline(Task, ABC):
     """
     An abstract class representing a pipeline of processing components.
 
@@ -190,17 +152,37 @@ class AbstractPipeline(ABC):
         _threads (Union[None, List[threading.Thread]]): A list of threads used to run the components in the pipeline.
     """
 
-    def start(self):
-        for component in self.get_pipeline():
-            component.start()
-
-    def stop(self):
-        for component in self.get_pipeline():
-            component.stop()
+    def __init__(self, fps: int):
+        super().__init__()
+        self._queue_of_results = queue.Queue()
+        self._frame_limiter = FrameRateLimiter(fps)
 
     @abstractmethod
-    def get_pipeline(self):
+    def get_components(self):
         pass
+
+    def pop_result(self) -> Any:
+        try:
+            return self._queue_of_results.get_nowait()
+        except queue.Empty:
+            return None
+
+    def run(self):
+        while self.running.getv():
+            last_result = None
+            pipe_passed = True
+            for component in self.get_components():
+                component_result = component.run(last_result)
+                if component_result is None:
+                    pipe_passed = False
+                    break
+                else:
+                    last_result = component_result
+            if pipe_passed:
+                self._queue_of_results.put(last_result)
+
+            # Limit pipeline throughput to fps
+            self._frame_limiter.tick()
 
 
 class CaptureEncodeSendPipeline(AbstractPipeline):
@@ -220,21 +202,16 @@ class CaptureEncodeSendPipeline(AbstractPipeline):
         _sender_component (_StreamSenderComponent): The component responsible for sending the encoded video data.
     """
 
-    def __init__(self,
-                 fps: int,
-                 socket_writer: SocketDataWriter):
-        super().__init__()
+    def __init__(self, fps: int, socket_writer: SocketDataWriter):
+        super().__init__(fps)
 
         self._capture_width = None
         self._capture_height = None
 
         # pipeline initialization
-        synchronize_pipeline_event = threading.Event()
-        synchronize_pipeline_event.set()
         capture_strategy = CaptureEncodeSendPipeline._get_default_capture_strategy(fps)
         self._capture_component = _CaptureComponent(
             capture_strategy,
-            synchronize_pipeline_event
         )
         self._capture_width = capture_strategy.get_monitor_width()
         self._capture_height = capture_strategy.get_monitor_height()
@@ -242,15 +219,12 @@ class CaptureEncodeSendPipeline(AbstractPipeline):
         self._encoder_component = _EncoderComponent(
             self._capture_width,
             self._capture_height,
-            self._capture_component.output_queue,  # join queues between
             CaptureEncodeSendPipeline._get_default_encoder_strategy(1),
-            synchronize_pipeline_event
         )
 
         self._sender_component = _StreamSenderComponent(
             self._capture_width,
             self._capture_height,
-            self._encoder_component.output_queue,  # join queues between
             socket_writer
         )
 
@@ -269,7 +243,7 @@ class CaptureEncodeSendPipeline(AbstractPipeline):
     def get_capture_height(self):
         return self._capture_height
 
-    def get_pipeline(self):
+    def get_components(self):
         return [self._capture_component, self._encoder_component, self._sender_component]
 
     @staticmethod
@@ -298,30 +272,18 @@ class _StreamReaderComponent(Component):
     Attributes:
         output_queue (queue.Queue): The queue to store the received video data.
         _running (AutoLockingValue): A thread-safe boolean flag indicating the running state of the component.
-        _stream_packet_processor (StreamPacketProcessor)
+        _stream_packet_processor (PacketProcessor)
     """
 
-    def __init__(self, stream_packet_processor: StreamPacketProcessor):
+    def __init__(self, stream_packet_processor: PacketProcessor):
         super().__init__()
-
-        self.output_queue = queue.Queue(maxsize=1)
-        self._running = AutoLockingValue(True)
         self._stream_packet_processor = stream_packet_processor
 
     def __str__(self):
         return f"SocketReaderComponent()"
 
-    def run(self) -> None:
-        while self.running.getv():
-            time.sleep(SLEEP_TIME)
-            video_data = self._stream_packet_processor.get_packet_data(PacketType.VIDEO_DATA)
-            if video_data:
-                try:
-                    self.output_queue.put_nowait(video_data)
-                except queue.Full:
-                    # We are discarding packet if encoder is slow
-                    # and did not process frame before
-                    continue
+    def run(self, *args):
+        return self._stream_packet_processor.get_packet_data(PacketType.VIDEO_DATA)
 
 
 class _DecoderComponent(Component):
@@ -339,34 +301,21 @@ class _DecoderComponent(Component):
         _decoder_strategy (AutoLockingValue): The thread-safe decoding strategy used for decoding video data.
     """
 
-    def __init__(self,
-                 input_queue: Queue,
-                 decoder_strategy: AbstractDecoderStrategy):
+    def __init__(self, decoder_strategy: AbstractDecoderStrategy):
         super().__init__()
 
-        self._input_queue = input_queue
-        # Output queue of decoded frame should be unlimited
-        # It is on rendering to consume them, rendering FPS > decoding FPS
-        self.output_queue = queue.Queue()
-        self._decoder_strategy = AutoLockingValue(decoder_strategy)
+        self._decoder_strategy = decoder_strategy
 
     def __str__(self):
         return f"DecoderComponent(strategy={self._decoder_strategy.getv()})"
 
     def set_decoder_strategy(self, decoder_strategy: AbstractDecoderStrategy):
-        self._decoder_strategy.setv(decoder_strategy)
+        self._decoder_strategy = decoder_strategy
 
-    def run(self) -> None:
-        while self.running.getv():
-            time.sleep(SLEEP_TIME)
-            try:
-                video_data: MouseMoveData = self._input_queue.get_nowait()
-            except queue.Empty:
-                continue
-
-            decoded_frame = self._decoder_strategy.getv().decode_packet(video_data)
-            # Should never block, queue has unlimited memory
-            self.output_queue.put((video_data, decoded_frame))
+    def run(self, video_data):
+        if video_data:
+            return video_data, self._decoder_strategy.decode_packet(video_data)
+        return None
 
 
 class ReadDecodePipeline(AbstractPipeline):
@@ -382,13 +331,11 @@ class ReadDecodePipeline(AbstractPipeline):
         _decoder_component (_DecoderComponent): The component responsible for decoding the video data.
     """
 
-    def __init__(self, stream_packet_processor: StreamPacketProcessor):
-        super().__init__()
+    def __init__(self, fps: int, stream_packet_processor: PacketProcessor):
+        super().__init__(fps)
+
         self._socket_reader_component = _StreamReaderComponent(stream_packet_processor)
-        self._decoder_component = _DecoderComponent(
-            self._socket_reader_component.output_queue,
-            self._get_default_decoder_strategy()
-        )
+        self._decoder_component = _DecoderComponent(self._get_default_decoder_strategy())
 
     def get_socket_reader_component(self):
         return self._socket_reader_component
@@ -396,14 +343,8 @@ class ReadDecodePipeline(AbstractPipeline):
     def get_decoder_component(self):
         return self._decoder_component
 
-    def get_pipeline(self):
+    def get_components(self):
         return [self._socket_reader_component, self._decoder_component]
-
-    def get(self) -> Union[None, Tuple[VideoData, List[np.ndarray]]]:
-        try:
-            return self._decoder_component.output_queue.get_nowait()
-        except queue.Empty:
-            return None
 
     @staticmethod
     def _get_default_decoder_strategy():

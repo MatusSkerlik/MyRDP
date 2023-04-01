@@ -41,7 +41,7 @@ class MSSCaptureStrategy(AbstractCaptureStrategy):
 
     def capture_screen(self) -> Union[None, bytes]:
         # sleep for the required time to match fps
-        self._frame_rate_limiter.tick()
+        # self._frame_rate_limiter.tick()
 
         # Get the dimensions of the first monitor
         monitor = self._sct.monitors[1]

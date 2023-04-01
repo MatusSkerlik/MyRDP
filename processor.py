@@ -11,7 +11,7 @@ from pread import SocketDataReader
 from thread import Task
 
 
-class StreamPacketProcessor(Task):
+class PacketProcessor(Task):
 
     def __init__(self, reader: SocketDataReader):
         super().__init__()

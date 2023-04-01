@@ -3,13 +3,13 @@ import time
 from command import MouseMoveCommand, MouseClickCommand, KeyboardEventCommand
 from dao import MouseMoveData, MouseClickData, KeyboardData
 from enums import PacketType
-from processor import StreamPacketProcessor
+from processor import PacketProcessor
 from thread import Task
 
 
 class CommandExecutor(Task):
 
-    def __init__(self, stream_packet_processor: StreamPacketProcessor):
+    def __init__(self, stream_packet_processor: PacketProcessor):
         super().__init__()
         self._stream_packet_processor = stream_packet_processor
 
