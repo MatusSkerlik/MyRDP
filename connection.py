@@ -121,7 +121,6 @@ class AutoReconnectServer(Connection):
                 print(f"Connection from {client_address}")
 
             time.sleep(0.25)
-        print(f"AutoReconnectServer worker thread exited")
 
     def stop(self):
         # If we are listening for connections, and we want to close the thread
@@ -163,4 +162,3 @@ class AutoReconnectClient(Connection):
                     print(f"Retrying in {self._retry_timeout} seconds...")
                     time.sleep(self._retry_timeout)
             time.sleep(0.25)
-        print(f"AutoReconnectClient worker thread exited")
