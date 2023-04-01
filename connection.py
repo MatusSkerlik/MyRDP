@@ -108,7 +108,7 @@ class AutoReconnectServer(Connection):
                 # Block this loop max _retry_timeout
                 server_socket.bind((self._host, self._port))
                 server_socket.listen(self._backlog)
-                server_socket.settimeout(self._retry_timeout)
+                # server_socket.settimeout(self._retry_timeout)
 
                 try:
                     self.socket, client_address = server_socket.accept()
@@ -150,7 +150,7 @@ class AutoReconnectClient(Connection):
             if not self.initialized.is_set():
                 try:
                     self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    self.socket.settimeout(self._retry_interval)
+                    # self.socket.settimeout(self._retry_interval)
                     self.socket.connect((self._host, self._port))
                     self.initialized.set()
                     print(f"Connected to {self._host}:{self._port}")
@@ -158,7 +158,10 @@ class AutoReconnectClient(Connection):
                     print(f"Connect error: {e}")
                     print(f"Retrying in {self._retry_interval} seconds...")
                     self.initialized.clear()
-                    self.socket.close()
-                    self.socket = None
+                    # It can be None due to read() and write() handling
+                    # ( socket.connect is interrupted and OSError is cached )
+                    if self.socket:
+                        self.socket.close()
+                        self.socket = None
                     continue
             time.sleep(self._retry_interval)
