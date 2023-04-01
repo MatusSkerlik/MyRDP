@@ -14,7 +14,7 @@ from pipeline import ReadDecodePipeline
 from pread import SocketDataReader
 from processor import PacketProcessor
 from pwrite import SocketDataWriter
-from render import FlexboxLayout, TextLayout
+from render import FlexboxLayout, TextLayout, ThreeDotsTextLayout
 
 
 class Server:
@@ -81,7 +81,7 @@ class Server:
         self._stream_packet_processor.start()
 
         pygame.init()
-        screen = pygame.display.set_mode((self._window_width, self._window_height), pygame.RESIZABLE)
+        screen = pygame.display.set_mode((self._window_width, self._window_height + 20), pygame.RESIZABLE)
         pygame.display.set_caption(self._caption)
         clock = pygame.time.Clock()
         pipe_frame_rate = FrameRateCalculator(1)
@@ -173,19 +173,38 @@ class Server:
                 self._scaled_height = new_height
 
                 # Rescale frame
-                self._last_image = pygame.transform.scale(img, (new_width, new_height))
+                self._last_image = pygame.transform.scale(img, (self._scaled_width, self._scaled_height))
 
-            # Render frame
-            if self._last_image:
-                screen.blit(self._last_image, (self._x_offset, self._y_offset))
+            if self._connection.is_connected():
+                # Render frame if there is connection
+                if self._last_image:
+                    screen.blit(self._last_image, (self._x_offset, self._y_offset))
+            else:
+                # Reset bandwidth monitor
+                self._bandwidth_monitor.reset()
 
             # Render FPS, Pipeline FPS and bandwidth
+            fps_layout = FlexboxLayout(mode="column", align_items="start")
+            fps_layout.add_child(TextLayout(f"FPS: {clock.get_fps():.2f}", font_size=20))
+            fps_layout.add_child(TextLayout(f"Pipeline FPS: {pipe_frame_rate.get_fps():.2f}", font_size=20))
+            fps_layout.render(screen)
+
+            # Render status bar
             bandwidth = self._bandwidth_monitor.get_bandwidth_str()
-            layout = FlexboxLayout(mode="column", align_items="start")
-            layout.add_child(TextLayout(f"FPS: {clock.get_fps():.2f}", font_size=20))
-            layout.add_child(TextLayout(f"Pipeline FPS: {pipe_frame_rate.get_fps():.2f}", font_size=20))
-            layout.add_child(TextLayout(f"Bandwidth: {bandwidth}", font_size=20))
-            layout.render(screen)
+            status_layout = FlexboxLayout(
+                (0, self._window_height),
+                (self._window_width, 20),
+                mode="row",
+                align_items="center",
+                justify_content="space-between",
+                bg_color=((46, 204, 113) if self._connection.is_connected() else (192, 57, 43))
+            )
+            if self._connection.is_connected():
+                status_layout.add_child(TextLayout(f"Connected", font_size=20))
+            else:
+                status_layout.add_child(ThreeDotsTextLayout(f"Disconnected", font_size=20))
+            status_layout.add_child(TextLayout(f"Bandwidth: {bandwidth}", font_size=20))
+            status_layout.render(screen)
 
             # Render mouse coordinates
             # MouseCoordinates().render(screen)
@@ -240,5 +259,8 @@ PORT = (os.getenv("RDP_SERVER_PORT") or 8085)
 FPS = 45
 
 if __name__ == "__main__":
-    server = Server(HOST, PORT, 1366, 720, FPS)
-    server.run()
+    try:
+        server = Server(HOST, PORT, 1366, 720, FPS)
+        server.run()
+    except KeyboardInterrupt:
+        pass

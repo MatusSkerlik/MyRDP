@@ -93,5 +93,8 @@ PORT = (os.getenv("RDP_SERVER_PORT") or 8085)
 FPS = 25
 
 if __name__ == "__main__":
-    client = Client(HOST, PORT, 200, 200, FPS)
-    client.run()
+    try:
+        client = Client(HOST, PORT, 200, 200, FPS)
+        client.run()
+    except KeyboardInterrupt:
+        pass

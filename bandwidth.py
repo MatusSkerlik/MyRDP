@@ -12,21 +12,15 @@ class BandwidthMonitor:
     """
 
     def __init__(self, window_size: int = 60) -> None:
-        """
-        Initializes the BandwidthMonitor with the given window size.
-        Args:
-            window_size (int): The size of the moving median window in seconds. Default is 60 seconds.
-        """
         self._window_size = window_size
         self._bytes_received = deque()
         self._timestamps = deque()
 
+    def reset(self):
+        self._bytes_received.clear()
+        self._timestamps.clear()
+
     def register_received_bytes(self, received_bytes: int) -> None:
-        """
-        Registers the received bytes and updates the deques accordingly.
-        Args:
-            received_bytes (int): The number of bytes received.
-        """
         current_time = time.time()
         self._bytes_received.append(received_bytes)
         self._timestamps.append(current_time)
@@ -36,11 +30,6 @@ class BandwidthMonitor:
             self._bytes_received.popleft()
 
     def get_bandwidth(self) -> int:
-        """
-        Calculates and returns the bandwidth based on the received bytes and the elapsed time.
-        Returns:
-            float: The bandwidth in bytes per second.
-        """
         elapsed_time = self._timestamps[-1] - self._timestamps[0] if len(self._timestamps) > 1 else 1
         total_bytes_received = sum(self._bytes_received)
         return int(total_bytes_received / elapsed_time)

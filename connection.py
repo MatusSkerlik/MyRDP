@@ -22,16 +22,16 @@ class Connection(Task, ABC):
         super().__init__()
 
         self.running = AutoLockingValue(False)
-        self.initialized = AutoLockingValue(False)
+        self.connected = AutoLockingValue(False)
         self.socket: Union[None, socket.socket] = None
 
     def write(self, data: bytes) -> None:
         if self.running.getv():
-            if self.initialized.getv():
+            if self.connected.getv():
                 try:
                     self.socket.sendall(data)
                 except OSError as e:
-                    self.initialized.setv(False)
+                    self.connected.setv(False)
                     print(f"sendall error {e}")
                     raise NoConnection(e)
                 return
@@ -43,7 +43,7 @@ class Connection(Task, ABC):
     def read(self, bufsize: int) -> bytes:
         if self.running.getv():
             try:
-                if self.initialized.getv():
+                if self.connected.getv():
                     data = self.socket.recv(bufsize)
                     if data:
                         return data
@@ -54,7 +54,7 @@ class Connection(Task, ABC):
                     raise NoConnection("Connection is not established")
             except OSError as e:
                 # Can happen when remote host closed connection
-                self.initialized.setv(False)
+                self.connected.setv(False)
                 print(f"recv error: {e}")
                 raise NoConnection(e)
         else:
@@ -69,6 +69,8 @@ class Connection(Task, ABC):
         # Join connection establishing threads
         super().stop()
 
+    def is_connected(self):
+        return self.connected.getv()
 
 class AutoReconnectServer(Connection):
     """
@@ -94,13 +96,26 @@ class AutoReconnectServer(Connection):
     def run(self):
         while self.running.getv():
 
-            if not self.initialized.getv():
+            if not self.connected.getv():
                 self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self._server_socket.bind((self._host, self._port))
                 self._server_socket.listen(self._backlog)
                 print(f"Listening on {self._host}:{self._port}")
                 try:
                     self.socket, client_address = self._server_socket.accept()
+
+                    # enable keepalive option
+                    self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+
+                    # set the keepalive interval (in seconds)
+                    self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 1)
+
+                    # set the number of keepalive probes
+                    self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
+
+                    # set the interval between keepalive probes (in seconds)
+                    self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 1)
+
                 except OSError as e:
                     self._server_socket.setblocking(False)
                     self._server_socket.close()
@@ -116,7 +131,7 @@ class AutoReconnectServer(Connection):
                 self._server_socket = None
 
                 # Pass all waiters for read and write calls
-                self.initialized.setv(True)
+                self.connected.setv(True)
 
                 print(f"Connection from {client_address}")
 
@@ -150,12 +165,12 @@ class AutoReconnectClient(Connection):
 
     def run(self):
         while self.running.getv():
-            if not self.initialized.getv():
+            if not self.connected.getv():
                 try:
                     print(f"Trying to connect to {self._host}:{self._port}")
                     self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     self.socket.connect((self._host, self._port))
-                    self.initialized.setv(True)
+                    self.connected.setv(True)
                     print(f"Connected to {self._host}:{self._port}")
                 except OSError as e:
                     print(f"Connect error: {e}")

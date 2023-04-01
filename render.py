@@ -1,5 +1,6 @@
+import time
 from abc import ABC, abstractmethod
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 import pygame
 
@@ -19,13 +20,15 @@ class Layout(ABC):
 
 class FlexboxLayout(Layout):
     def __init__(self, position: Tuple[int, int] = (0, 0), size: Tuple[int, int] = (0, 0), mode: str = 'row',
-                 align_items: str = 'start', justify_content: str = 'start'):
+                 align_items: str = 'start', justify_content: str = 'start',
+                 bg_color: Optional[Tuple[int, int, int]] = None):
         super().__init__(position, size)
 
         self._children: List[Layout] = []
         self._mode = mode
         self._align_items = align_items
         self._justify_content = justify_content
+        self._bg_color = bg_color
 
     def add_child(self, child: Layout):
         self._children.append(child)
@@ -38,6 +41,9 @@ class FlexboxLayout(Layout):
             self._layout_row()
         elif self._mode == 'column':
             self._layout_column()
+
+        if self._bg_color:
+            pygame.draw.rect(screen, self._bg_color, (self.position, self.size))
 
         for child in self._children:
             child.render(screen)
@@ -133,6 +139,24 @@ class TextLayout(Layout):
 
     def render(self, screen):
         screen.blit(self._surface, self.position)
+
+
+class ThreeDotsTextLayout(TextLayout):
+    _dots = ""
+    _last_time = time.time()
+
+    def __init__(self, text: str, font: pygame.font.Font = None, font_size=16,
+                 color: Tuple[int, int, int] = (255, 255, 255), position: Tuple[int, int] = (0, 0)):
+        super().__init__(text, font, font_size, color, position)
+
+    def render(self, screen):
+        if (time.time() - ThreeDotsTextLayout._last_time) > 1:
+            ThreeDotsTextLayout._last_time = time.time()
+            ThreeDotsTextLayout._dots += "."
+            if len(ThreeDotsTextLayout._dots) > 3:
+                ThreeDotsTextLayout._dots = ""
+        self._surface = self._font.render(f"{self._text}{ThreeDotsTextLayout._dots}", True, self._color)
+        super().render(screen)
 
 
 class MouseCoordinates:
