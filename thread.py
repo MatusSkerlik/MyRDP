@@ -23,6 +23,7 @@ class Task:
         self.thread.daemon = True
 
     def start(self):
+        print(f"Starting new thread: {self}")
         self.running.setv(True)
         self.thread.start()
 

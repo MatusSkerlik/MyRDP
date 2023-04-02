@@ -171,6 +171,7 @@ class SocketDataReader(BytesReader):
                     state = ButtonState(self.read_byte())
 
                     return packet_type, KeyboardData(key_code, state)
+
                 else:
                     raise NotImplementedError
 
