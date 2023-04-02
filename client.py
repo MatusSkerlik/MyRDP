@@ -4,11 +4,10 @@ import pygame
 from pygame import QUIT
 
 from connection import AutoReconnectClient
-from executor import CommandExecutor
 from lock import AutoLockingValue
 from pipeline import CaptureEncodeSendPipeline
 from pread import SocketDataReader
-from processor import PacketProcessor
+from processor import PacketProcessor, CommandProcessor
 from pwrite import SocketDataWriter
 
 
@@ -50,8 +49,8 @@ class Client:
         self._connection = AutoReconnectClient(host, port)
         self._socket_reader = SocketDataReader(self._connection)
         self._socket_writer = SocketDataWriter(self._connection)
-        self._stream_packet_processor = PacketProcessor(self._socket_reader)
-        self._command_executor = CommandExecutor(self._stream_packet_processor)
+        self._packet_processor = PacketProcessor(self._socket_reader)
+        self._command_executor = CommandProcessor(self._packet_processor)
         self._pipeline = CaptureEncodeSendPipeline(fps, self._socket_writer)
 
     def run(self):
@@ -59,7 +58,7 @@ class Client:
             raise RuntimeError("The 'run' method can only be called once")
         self._running = True
         self._connection.start()
-        self._stream_packet_processor.start()
+        self._packet_processor.start()
         self._pipeline.start()
         self._command_executor.start()
 
@@ -84,7 +83,7 @@ class Client:
         self._running = False
         self._connection.stop()
         self._command_executor.stop()
-        self._stream_packet_processor.stop()
+        self._packet_processor.stop()
         self._pipeline.stop()
 
 

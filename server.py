@@ -68,8 +68,8 @@ class Server:
         self._connection = AutoReconnectServer(host, port)
         self._socket_reader = SocketDataReader(self._connection, buffer_size=4096)
         self._socket_writer = SocketDataWriter(self._connection)
-        self._stream_packet_processor = PacketProcessor(self._socket_reader)
-        self._read_decode_pipeline = ReadDecodePipeline(fps, self._stream_packet_processor)
+        self._packet_processor = PacketProcessor(self._socket_reader)
+        self._read_decode_pipeline = ReadDecodePipeline(fps, self._packet_processor)
         self._bandwidth_monitor = BandwidthMonitor()
 
     def run(self) -> None:
@@ -78,7 +78,7 @@ class Server:
         self._running = True
         self._connection.start()
         self._read_decode_pipeline.start()
-        self._stream_packet_processor.start()
+        self._packet_processor.start()
 
         pygame.init()
         screen = pygame.display.set_mode((self._window_width, self._window_height + 20), pygame.RESIZABLE)
@@ -217,7 +217,7 @@ class Server:
     def stop(self) -> None:
         self._running = False
         self._connection.stop()
-        self._stream_packet_processor.stop()
+        self._packet_processor.stop()
         self._read_decode_pipeline.stop()
 
     def _calculate_ratio(self, width: int, height: int) -> Tuple[int, int, int, int]:

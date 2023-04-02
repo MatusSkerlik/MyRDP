@@ -3,6 +3,7 @@ import time
 from queue import Queue
 from typing import Dict, Union
 
+from command import MouseMoveCommand, MouseClickCommand, KeyboardEventCommand
 from connection import NoDataAvailableError, NoConnection
 from dao import MouseMoveData, MouseClickData, KeyboardData
 from enums import PacketType
@@ -44,3 +45,33 @@ class PacketProcessor(Task):
             except RuntimeError:
                 # Application shutdown
                 pass
+
+
+class CommandProcessor(Task):
+
+    def __init__(self, packet_processor: PacketProcessor):
+        super().__init__()
+        self._packet_processor = packet_processor
+
+    def __str__(self) -> str:
+        return f"CommandExecutor()"
+
+    def run(self):
+        while self.running.getv():
+
+            mouse_move: MouseMoveData = self._packet_processor.get_packet_data(PacketType.MOUSE_MOVE)
+            if mouse_move:
+                cmd = MouseMoveCommand(mouse_move)
+                cmd.execute()
+
+            mouse_click: MouseClickData = self._packet_processor.get_packet_data(PacketType.MOUSE_CLICK)
+            if mouse_click:
+                cmd = MouseClickCommand(mouse_click)
+                cmd.execute()
+
+            keyboard_data: KeyboardData = self._packet_processor.get_packet_data(PacketType.KEYBOARD_EVENT)
+            if keyboard_data:
+                cmd = KeyboardEventCommand(keyboard_data)
+                cmd.execute()
+
+            time.sleep(0.005)

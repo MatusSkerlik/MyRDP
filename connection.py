@@ -45,10 +45,10 @@ class Connection(Task, ABC):
             try:
                 if self.connected.getv():
                     data = self.socket.recv(bufsize)
-                    if data:
+                    if data != b'':
                         return data
                     else:
-                        # EOF
+                        # Socket closed by remote
                         raise OSError
                 else:
                     raise NoConnection("Connection is not established")
@@ -62,7 +62,6 @@ class Connection(Task, ABC):
 
     def stop(self):
         if self.socket:
-            self.socket.setblocking(False)
             self.socket.close()
             self.socket = None
 
@@ -71,6 +70,7 @@ class Connection(Task, ABC):
 
     def is_connected(self):
         return self.connected.getv()
+
 
 class AutoReconnectServer(Connection):
     """
@@ -95,55 +95,41 @@ class AutoReconnectServer(Connection):
 
     def run(self):
         while self.running.getv():
-
             if not self.connected.getv():
-                self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self._server_socket.bind((self._host, self._port))
-                self._server_socket.listen(self._backlog)
-                print(f"Listening on {self._host}:{self._port}")
-                try:
-                    self.socket, client_address = self._server_socket.accept()
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
 
-                    # enable keepalive option
-                    self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                    server_socket.bind((self._host, self._port))
+                    server_socket.listen(self._backlog)
 
-                    # set the keepalive interval (in seconds)
-                    self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 1)
+                    print(f"Listening on {self._host}:{self._port}")
 
-                    # set the number of keepalive probes
-                    self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
+                    try:
+                        self.socket, client_address = server_socket.accept()
 
-                    # set the interval between keepalive probes (in seconds)
-                    self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 1)
+                        # enable keepalive option
+                        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
 
-                except OSError as e:
-                    self._server_socket.setblocking(False)
-                    self._server_socket.close()
-                    self._server_socket = None
-                    self.socket = None
-                    print(f"Accept Error: {e}")
-                    time.sleep(self._retry_timeout)
-                    continue
+                        # set the keepalive interval (in seconds)
+                        self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 1)
 
-                # Close server socket after obtaining client
-                self._server_socket.setblocking(False)
-                self._server_socket.close()
-                self._server_socket = None
+                        # set the number of keepalive probes
+                        self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
 
-                # Pass all waiters for read and write calls
-                self.connected.setv(True)
+                        # set the interval between keepalive probes (in seconds)
+                        self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 1)
 
-                print(f"Connection from {client_address}")
+                    except OSError as e:
+                        self.socket = None
+                        print(f"Accept Error: {e}")
+                        time.sleep(self._retry_timeout)
+                        continue
+
+                    # Pass all waiters for read and write calls
+                    self.connected.setv(True)
+
+                    print(f"Connection from {client_address}")
 
             time.sleep(0.25)
-
-    def stop(self):
-        # If we are listening for connections, and we want to close the thread
-        # Will raise OSError in thread
-        if self._server_socket:
-            self._server_socket.setblocking(False)
-            self._server_socket.close()
-        super().stop()
 
 
 class AutoReconnectClient(Connection):

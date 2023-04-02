@@ -275,9 +275,9 @@ class _StreamReaderComponent(Component):
         _stream_packet_processor (PacketProcessor)
     """
 
-    def __init__(self, stream_packet_processor: PacketProcessor):
+    def __init__(self, packet_processor: PacketProcessor):
         super().__init__()
-        self._stream_packet_processor = stream_packet_processor
+        self._stream_packet_processor = packet_processor
 
     def __str__(self):
         return f"SocketReaderComponent()"
