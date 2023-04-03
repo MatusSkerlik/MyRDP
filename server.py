@@ -256,7 +256,7 @@ class Server:
 
 HOST = (os.getenv("RDP_SERVER_IP") or "")
 PORT = (os.getenv("RDP_SERVER_PORT") or 8085)
-FPS = 45
+FPS = 30
 
 if __name__ == "__main__":
     try:
