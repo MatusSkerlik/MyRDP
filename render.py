@@ -1,8 +1,10 @@
 import time
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Callable, Type, TypeVar
 
 import pygame
+
+T = TypeVar("T")
 
 
 class Layout(ABC):
@@ -13,9 +15,52 @@ class Layout(ABC):
         self.position = position
         self.size = size
 
+    def set_position(self, position: Tuple[int, int]):
+        self.position = position
+        return self
+
+    def set_x(self, x: int):
+        self.position = (x, self.position[1])
+        return self
+
+    def set_y(self, y: int):
+        self.position = (self.position[0], y)
+        return self
+
     @abstractmethod
     def render(self, screen):
         pass
+
+
+class TextLayout(Layout):
+    def __init__(self, text: str,
+                 font: pygame.font.Font = None, font_size=16, color: Tuple[int, int, int] = (255, 255, 255),
+                 position: Tuple[int, int] = (0, 0)):
+        self._text = text
+        self._font_size = font_size
+        self._font = font or pygame.font.Font(None, font_size)
+        self._color = color
+        self._surface = self._font.render(self._text, True, self._color)
+
+        super().__init__(position, (self._surface.get_width(), self._surface.get_height()))
+
+    def set_font_size(self, font_size: int):
+        self._font_size = font_size
+        self._font = pygame.font.Font(None, font_size)
+        self._prerender()
+        return self
+
+    def set_color(self, color: Tuple[int, int, int]):
+        self._color = color
+        self._prerender()
+        return self
+
+    def render(self, screen):
+        screen.blit(self._surface, self.position)
+
+    def _prerender(self):
+        self._surface = self._font.render(self._text, True, self._color)
+        self.size = self._surface.get_width(), self._surface.get_height()
 
 
 class FlexboxLayout(Layout):
@@ -30,8 +75,52 @@ class FlexboxLayout(Layout):
         self._justify_content = justify_content
         self._bg_color = bg_color
 
+    def set_size(self, size: Tuple[int, int]):
+        self.size = size
+        return self
+
+    def set_width(self, width: int):
+        self.size = (width, self.size[1])
+        return self
+
+    def set_height(self, height: int):
+        self.size = (self.size[0], height)
+        return self
+
+    def set_background(self, color: Tuple[int, int, int]):
+        self._bg_color = color
+        return self
+
+    def set_mode(self, mode: str):
+        self._mode = mode
+        return self
+
+    def set_align_items(self, align_items: str):
+        self._align_items = align_items
+        return self
+
+    def set_justify_content(self, justify_content: str):
+        self._justify_content = justify_content
+        return self
+
     def add_child(self, child: Layout):
         self._children.append(child)
+        return self
+
+    def set_text_size(self, font_size: int,
+                      for_type: Type[T] = TextLayout,
+                      filter_func: Callable[[List[T]], List[T]] = lambda l: l):
+        for children in filter_func(self._get_children(for_type)):
+            children.set_font_size(font_size)
+        return self
+
+    def set_text_color(self,
+                       color: Tuple[int, int, int],
+                       for_type: Type[T] = TextLayout,
+                       filter_func=lambda l: l):
+        for children in filter_func(self._get_children(for_type)):
+            children.set_color(color)
+        return self
 
     def render(self, screen):
         if self.size[0] == 0 or self.size[1] == 0:
@@ -125,20 +214,12 @@ class FlexboxLayout(Layout):
             # Update y coordinate for next child
             y_offset += child.size[1] + spacing
 
-
-class TextLayout(Layout):
-    def __init__(self, text: str,
-                 font: pygame.font.Font = None, font_size=16, color: Tuple[int, int, int] = (255, 255, 255),
-                 position: Tuple[int, int] = (0, 0)):
-        self._text = text
-        self._font = font or pygame.font.Font(None, font_size)
-        self._color = color
-        self._surface = self._font.render(self._text, True, self._color)
-
-        super().__init__(position, (self._surface.get_width(), self._surface.get_height()))
-
-    def render(self, screen):
-        screen.blit(self._surface, self.position)
+    def _get_children(self, of_type: Type[T]) -> List[T]:
+        children = []
+        for child in self._children:
+            if isinstance(child, of_type):
+                children.append(child)
+        return children
 
 
 class ThreeDotsTextLayout(TextLayout):

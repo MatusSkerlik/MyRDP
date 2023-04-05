@@ -175,7 +175,8 @@ class Server:
                 # Rescale frame
                 self._last_image = pygame.transform.scale(img, (self._scaled_width, self._scaled_height))
 
-            if self._connection.is_connected():
+            is_connected = self._connection.is_connected()
+            if is_connected:
                 # Render frame if there is connection
                 if self._last_image:
                     screen.blit(self._last_image, (self._x_offset, self._y_offset))
@@ -184,27 +185,31 @@ class Server:
                 self._bandwidth_monitor.reset()
 
             # Render FPS, Pipeline FPS and bandwidth
-            fps_layout = FlexboxLayout(mode="column", align_items="start")
-            fps_layout.add_child(TextLayout(f"FPS: {clock.get_fps():.2f}", font_size=20))
-            fps_layout.add_child(TextLayout(f"Pipeline FPS: {pipe_frame_rate.get_fps():.2f}", font_size=20))
-            fps_layout.render(screen)
+            (FlexboxLayout()
+             .set_mode("column")
+             .set_align_items("start")
+             .set_background((0, 0, 0))
+             .add_child(TextLayout(f"FPS: {clock.get_fps():.2f}"))
+             .add_child(TextLayout(f"Pipeline FPS: {pipe_frame_rate.get_fps():.2f}"))
+             .set_text_size(24)
+             .render(screen))
 
             # Render status bar
             bandwidth = self._bandwidth_monitor.get_bandwidth_str()
-            status_layout = FlexboxLayout(
-                (0, self._window_height),
-                (self._window_width, 20),
-                mode="row",
-                align_items="center",
-                justify_content="space-between",
-                bg_color=((46, 204, 113) if self._connection.is_connected() else (192, 57, 43))
-            )
-            if self._connection.is_connected():
-                status_layout.add_child(TextLayout(f"Connected", font_size=20))
-            else:
-                status_layout.add_child(ThreeDotsTextLayout(f"Disconnected", font_size=20))
-            status_layout.add_child(TextLayout(f"Bandwidth: {bandwidth}", font_size=20))
-            status_layout.render(screen)
+            (FlexboxLayout()
+             .set_x(0)
+             .set_y(self._window_height)
+             .set_width(self._window_width)
+             .set_height(20)
+             .set_align_items("center")
+             .set_justify_content("space-between")
+             .set_background((46, 204, 113) if is_connected else (192, 57, 43))
+             .add_child(
+                TextLayout(f"Connected") if is_connected else
+                ThreeDotsTextLayout(f"Disconnected"))
+             .add_child(TextLayout(f"Bandwidth '{bandwidth}'"))
+             .set_text_size(24)
+             .render(screen))
 
             # Render mouse coordinates
             # MouseCoordinates().render(screen)
