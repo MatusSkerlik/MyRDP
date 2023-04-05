@@ -1,9 +1,9 @@
 import queue
 import time
 from queue import Queue
-from typing import Dict, Union
+from typing import Dict, Union, Type
 
-from command import MouseMoveCommand, MouseClickCommand, KeyboardEventCommand
+from command import MouseMoveCommand, MouseClickCommand, KeyboardEventCommand, Command
 from connection import NoDataAvailableError, NoConnection
 from dao import MouseMoveData, MouseClickData, KeyboardData
 from enums import PacketType
@@ -58,20 +58,17 @@ class CommandProcessor(Task):
 
     def run(self):
         while self.running.getv():
+            time.sleep(0.0025)
 
-            mouse_move: MouseMoveData = self._packet_processor.get_packet_data(PacketType.MOUSE_MOVE)
-            if mouse_move:
-                cmd = MouseMoveCommand(mouse_move)
+            self._process_all(PacketType.MOUSE_MOVE, MouseMoveCommand)
+            self._process_all(PacketType.MOUSE_CLICK, MouseClickCommand)
+            self._process_all(PacketType.KEYBOARD_EVENT, KeyboardEventCommand)
+
+    def _process_all(self, packets: PacketType, and_resolve_with_command: Type[Command]):
+        while True:
+            data_object = self._packet_processor.get_packet_data(packets)
+            if data_object:
+                cmd = and_resolve_with_command(data_object)
                 cmd.execute()
-
-            mouse_click: MouseClickData = self._packet_processor.get_packet_data(PacketType.MOUSE_CLICK)
-            if mouse_click:
-                cmd = MouseClickCommand(mouse_click)
-                cmd.execute()
-
-            keyboard_data: KeyboardData = self._packet_processor.get_packet_data(PacketType.KEYBOARD_EVENT)
-            if keyboard_data:
-                cmd = KeyboardEventCommand(keyboard_data)
-                cmd.execute()
-
-            time.sleep(0.005)
+            else:
+                break

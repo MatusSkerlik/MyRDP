@@ -11,6 +11,10 @@ from pwrite import SocketDataWriter
 
 
 class Command(ABC):
+
+    def __init__(self, *args) -> None:
+        raise NotImplementedError
+
     @abstractmethod
     def execute(self, *args, **kwargs):
         raise NotImplementedError
