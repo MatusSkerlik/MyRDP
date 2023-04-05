@@ -1,9 +1,8 @@
-import os
-
 import pygame
 from pygame import QUIT
 
 from connection import AutoReconnectClient
+from constants import HOST, PORT, FPS
 from lock import AutoLockingValue
 from pipeline import CaptureEncodeSendPipeline
 from pread import SocketDataReader
@@ -86,10 +85,6 @@ class Client:
         self._packet_processor.stop()
         self._pipeline.stop()
 
-
-HOST = (os.getenv("RDP_SERVER_IP") or "127.0.0.1")
-PORT = (os.getenv("RDP_SERVER_PORT") or 8085)
-FPS = 30
 
 if __name__ == "__main__":
     try:

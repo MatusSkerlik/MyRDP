@@ -1,4 +1,3 @@
-import os
 from typing import Tuple
 
 import pygame
@@ -6,6 +5,7 @@ import pygame
 from bandwidth import BandwidthMonitor
 from command import MouseMoveNetworkCommand, MouseClickNetworkCommand, KeyboardEventNetworkCommand
 from connection import AutoReconnectServer
+from constants import HOST, PORT, FPS
 from enums import MouseButton, ButtonState
 from fps import FrameRateCalculator
 from keyboard import KEY_MAPPING
@@ -258,10 +258,6 @@ class Server:
             int((y - self._y_offset) * (self._client_height / self._scaled_height))
         )
 
-
-HOST = (os.getenv("RDP_SERVER_IP") or "")
-PORT = (os.getenv("RDP_SERVER_PORT") or 8085)
-FPS = 30
 
 if __name__ == "__main__":
     try:
