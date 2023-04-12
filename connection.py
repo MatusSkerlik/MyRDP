@@ -1,6 +1,7 @@
+import io
 import socket
 import time
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Union
 
 from lock import AutoLockingValue
@@ -16,49 +17,140 @@ class NoConnection(Exception):
     pass
 
 
+class IOStream:
+
+    def has_exception(self) -> bool:
+        return self.get_exception() is not None
+
+    @abstractmethod
+    def get_exception(self) -> Exception:
+        pass
+
+
+class InputStream(Task, IOStream):
+
+    def __init__(self, sock: socket.socket) -> None:
+        super().__init__()
+
+        self._socket = sock
+        self._socket.setblocking(False)
+
+        self._buffer = io.BytesIO()
+        self._closed = False
+        self._eof = False
+        self._exception = None
+        self.start()
+
+    def get_exception(self):
+        return self._exception
+
+    def is_closed(self):
+        return self._closed
+
+    def is_eof(self):
+        return self._eof
+
+    def read(self) -> bytes:
+        try:
+            return self._buffer.getvalue()
+        finally:
+            self._flush()
+
+    def run(self):
+        while self.running.getv():
+            try:
+                data = self._socket.recv(4096)
+                if data != b'':
+                    self._buffer.write(data)
+                else:
+                    # Socket closed by remote
+                    self._close(eof=True)
+            except BlockingIOError:
+                # This line is what makes me mad
+                time.sleep(0.0025)
+            except OSError as e:
+                self._close(eof=False)
+                self._exception = e
+
+    def _close(self, eof: bool):
+        self._closed = True
+        self._eof = eof
+        self.stop()
+
+    def _flush(self):
+        self._buffer = io.BytesIO()
+
+
+class OutputStream(Task, IOStream):
+
+    def __init__(self, sock: socket.socket) -> None:
+        super().__init__()
+
+        self._socket = sock
+        self._socket.setblocking(False)
+
+        self._buffer = io.BytesIO()
+        self._closed = False
+        self._exception = None
+        self.start()
+
+    def get_exception(self):
+        return self._exception
+
+    def is_closed(self):
+        return self._closed
+
+    def write(self, data: bytes) -> None:
+        if self._buffer.write(data) != len(data):
+            raise RuntimeError
+
+    def run(self):
+        while self.running.getv():
+            try:
+                while len(self._buffer.getvalue()) > 0:
+                    sent = self._socket.send(self._buffer.getvalue())
+                    self._flush(sent)
+            except BlockingIOError:
+                # This line is what makes me mad
+                time.sleep(0.0025)
+            except OSError as e:
+                self._close()
+                self._exception = e
+
+    def _close(self):
+        self._closed = True
+        self.stop()
+
+    def _flush(self, sent: int):
+        remaining_data = self._buffer.getvalue()[sent:]
+        self._buffer = io.BytesIO()
+        self._buffer.write(remaining_data)
+        self._buffer.seek(0)
+
+
 class Connection(Task, ABC):
 
     def __init__(self) -> None:
         super().__init__()
 
-        self.running = AutoLockingValue(False)
         self.connected = AutoLockingValue(False)
         self.socket: Union[None, socket.socket] = None
+        self._input_stream = None
+        self._output_stream = None
 
-    def write(self, data: bytes) -> None:
-        if self.running.getv():
-            if self.connected.getv():
-                try:
-                    self.socket.sendall(data)
-                except OSError as e:
-                    self.connected.setv(False)
-                    print(f"sendall error {e}")
-                    raise NoConnection(e)
-                return
-            else:
-                raise NoConnection("Connection is not established")
-        else:
-            raise RuntimeError("Connection stopped")
+    def get_input_stream(self) -> Union[None, InputStream]:
+        if self.connected.getv():
+            if self._input_stream is None or self._input_stream.has_exception():
+                self._input_stream = InputStream(self.socket)
+            return self._input_stream
+        return None
 
-    def read(self, bufsize: int) -> bytes:
-        if self.running.getv():
-            try:
-                if self.connected.getv():
-                    data = self.socket.recv(bufsize)
-                    if data != b'':
-                        return data
-                    else:
-                        # Socket closed by remote
-                        raise OSError
-                else:
-                    raise NoConnection("Connection is not established")
-            except OSError as e:
-                # Can happen when remote host closed connection
-                self.connected.setv(False)
-                print(f"recv error: {e}")
-                raise NoConnection(e)
-        else:
-            raise RuntimeError("Connection stopped")
+    def get_output_stream(self) -> Union[None, OutputStream]:
+        if self.connected.getv():
+            if self._output_stream is None or self._output_stream.has_exception():
+                self._output_stream = OutputStream(self.socket)
+            return self._output_stream
+        return None
 
     def stop(self):
         if self.socket:
@@ -91,7 +183,6 @@ class AutoReconnectServer(Connection):
         self._port = port
         self._backlog = backlog
         self._retry_timeout = retry_timeout
-        self._server_socket = None
 
     def run(self):
         while self.running.getv():

@@ -20,8 +20,11 @@ class SocketDataWriter:
 
     def write_packet(self, packet: Packet) -> None:
         # Write synchronization packet into stream
+        output_stream = self._connection.get_output_stream()
         if time.time() - self._last_sync_packet > self._sync_packet_timeout:
-            self._last_sync_packet = time.time()
-            self._connection.write(SynchronizationPacketFactory.create_packet().get_bytes())
+            if output_stream:
+                self._last_sync_packet = time.time()
+                output_stream.write(SynchronizationPacketFactory.create_packet().get_bytes())
 
-        self._connection.write(packet.get_bytes())
+        if output_stream:
+            output_stream.write(packet.get_bytes())

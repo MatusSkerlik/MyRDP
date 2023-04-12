@@ -140,7 +140,7 @@ class Server:
             data = self._read_decode_pipeline.pop_result()
 
             # If data from pipeline are available
-            if data is not None:
+            if data and len(data) > 0:
                 # Track fps of pipeline
                 pipe_frame_rate.tick()
 

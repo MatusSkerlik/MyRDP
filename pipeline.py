@@ -307,7 +307,7 @@ class _DecoderComponent(Component):
         self._decoder_strategy = decoder_strategy
 
     def __str__(self):
-        return f"DecoderComponent(strategy={self._decoder_strategy.getv()})"
+        return f"DecoderComponent(strategy={self._decoder_strategy})"
 
     def set_decoder_strategy(self, decoder_strategy: AbstractDecoderStrategy):
         self._decoder_strategy = decoder_strategy

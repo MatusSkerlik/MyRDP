@@ -1,5 +1,6 @@
 import io
 import struct
+import time
 from typing import Tuple
 
 from connection import Connection
@@ -95,8 +96,12 @@ class SocketDataReader(BytesReader):
         Reads data from the socket and appends it to the buffer.
         Raises a ConnectionError if the connection is closed.
         """
-        data = self._connection.read(self._buffer_size)
+        input_stream = self._connection.get_input_stream()
+        while not input_stream:
+            time.sleep(0.5)
+            input_stream = self._connection.get_input_stream()
 
+        data = input_stream.read()
         current_pos = self.buffer.tell()
         self.buffer.seek(0, io.SEEK_END)
         self.buffer.write(data)
