@@ -1,10 +1,8 @@
 import queue
-import time
 from queue import Queue
 from typing import Dict, Union, Type
 
 from command import MouseMoveCommand, MouseClickCommand, KeyboardEventCommand, Command
-from connection import NoDataAvailableError, NoConnection
 from dao import MouseMoveData, MouseClickData, KeyboardData
 from enums import PacketType
 from lock import AutoLockingValue
@@ -30,39 +28,25 @@ class PacketProcessor(Task):
 
     def run(self):
         while self.running.getv():
-            try:
-                packet_type, data_object = self._socket_data_reader.read_packet()
-                try:
-                    self._packet_queues.get(packet_type).put_nowait(data_object)
-                except queue.Full:
-                    pass
-            except NoConnection:
-                # There is connection lost
-                time.sleep(0.01)
-            except NoDataAvailableError:
-                # There are no packets in stream available
-                time.sleep(0.01)
-            except RuntimeError:
-                # Application shutdown
-                pass
+            data = self._socket_data_reader.read_packet(timeout=1 / 120)
+            if data:
+                packet_type, data_object = data
+                self._packet_queues.get(packet_type).put_nowait(data_object)
 
 
-class CommandProcessor(Task):
+class CommandProcessor:
 
     def __init__(self, packet_processor: PacketProcessor):
         super().__init__()
         self._packet_processor = packet_processor
 
     def __str__(self) -> str:
-        return f"CommandExecutor()"
+        return f"CommandProcessor()"
 
-    def run(self):
-        while self.running.getv():
-            time.sleep(0.0025)
-
-            self._process_all(PacketType.MOUSE_MOVE, MouseMoveCommand)
-            self._process_all(PacketType.MOUSE_CLICK, MouseClickCommand)
-            self._process_all(PacketType.KEYBOARD_EVENT, KeyboardEventCommand)
+    def process(self):
+        self._process_all(PacketType.MOUSE_MOVE, MouseMoveCommand)
+        self._process_all(PacketType.MOUSE_CLICK, MouseClickCommand)
+        self._process_all(PacketType.KEYBOARD_EVENT, KeyboardEventCommand)
 
     def _process_all(self, packets: PacketType, and_resolve_with_command: Type[Command]):
         while True:

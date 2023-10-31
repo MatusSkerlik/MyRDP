@@ -1,9 +1,6 @@
+import mss
 from abc import ABC, abstractmethod
 from typing import Optional, Any, Dict, Union
-
-import mss
-
-from fps import FrameRateLimiter
 
 
 class AbstractCaptureStrategy(ABC):
@@ -29,8 +26,7 @@ class MSSCaptureStrategy(AbstractCaptureStrategy):
         _sct (mss.mss): The MSS object used for screen capturing.
     """
 
-    def __init__(self, fps: int):
-        self._frame_rate_limiter = FrameRateLimiter(fps)
+    def __init__(self):
         self._sct = mss.mss()
 
     def get_monitor_width(self) -> int:
@@ -88,8 +84,7 @@ class CaptureStrategyBuilder:
             return None
 
         if self._strategy_type.lower() == "mss":
-            fps = self._options.get("fps", 30)
-            return MSSCaptureStrategy(fps)
+            return MSSCaptureStrategy()
 
         # Add other strategy types here
         raise NotImplementedError

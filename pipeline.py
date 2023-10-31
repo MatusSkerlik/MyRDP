@@ -1,7 +1,5 @@
 import queue
-import threading
 from abc import ABC, abstractmethod
-from queue import Queue
 from typing import Union, List, Any
 
 from capture import AbstractCaptureStrategy, CaptureStrategyBuilder
@@ -10,7 +8,6 @@ from dao import VideoContainerDataPacketFactory
 from decode import DecoderStrategyBuilder, AbstractDecoderStrategy
 from encode import AbstractEncoderStrategy, EncoderStrategyBuilder
 from enums import PacketType
-from fps import FrameRateLimiter
 from lock import AutoLockingValue
 from processor import PacketProcessor
 from pwrite import SocketDataWriter
@@ -127,6 +124,7 @@ class _StreamSenderComponent(Component):
         return f"SocketWriterComponent(width={self._width}, height={self._height})"
 
     def run(self, encoded_frame) -> None:
+        print(f"Sending video data")
         packet = VideoContainerDataPacketFactory.create_packet(self._width, self._height, encoded_frame)
         try:
             self._socket_writer.write_packet(packet)
@@ -152,13 +150,12 @@ class AbstractPipeline(Task, ABC):
         _threads (Union[None, List[threading.Thread]]): A list of threads used to run the components in the pipeline.
     """
 
-    def __init__(self, fps: int):
+    def __init__(self):
         super().__init__()
         self._queue_of_results = queue.Queue()
-        self._frame_limiter = FrameRateLimiter(fps)
 
     @abstractmethod
-    def get_components(self):
+    def get_components(self) -> List[Component]:
         pass
 
     def pop_result(self) -> Any:
@@ -181,9 +178,6 @@ class AbstractPipeline(Task, ABC):
             if pipe_passed:
                 self._queue_of_results.put(last_result)
 
-            # Limit pipeline throughput to fps
-            self._frame_limiter.tick()
-
 
 class CaptureEncodeSendPipeline(AbstractPipeline):
     """
@@ -202,14 +196,14 @@ class CaptureEncodeSendPipeline(AbstractPipeline):
         _sender_component (_StreamSenderComponent): The component responsible for sending the encoded video data.
     """
 
-    def __init__(self, fps: int, socket_writer: SocketDataWriter):
-        super().__init__(fps)
+    def __init__(self, socket_writer: SocketDataWriter):
+        super().__init__()
 
         self._capture_width = None
         self._capture_height = None
 
         # pipeline initialization
-        capture_strategy = CaptureEncodeSendPipeline._get_default_capture_strategy(fps)
+        capture_strategy = CaptureEncodeSendPipeline._get_default_capture_strategy()
         self._capture_component = _CaptureComponent(
             capture_strategy,
         )
@@ -219,7 +213,7 @@ class CaptureEncodeSendPipeline(AbstractPipeline):
         self._encoder_component = _EncoderComponent(
             self._capture_width,
             self._capture_height,
-            CaptureEncodeSendPipeline._get_default_encoder_strategy(1),
+            CaptureEncodeSendPipeline._get_default_encoder_strategy(),
         )
 
         self._sender_component = _StreamSenderComponent(
@@ -247,17 +241,15 @@ class CaptureEncodeSendPipeline(AbstractPipeline):
         return [self._capture_component, self._encoder_component, self._sender_component]
 
     @staticmethod
-    def _get_default_capture_strategy(fps: int) -> AbstractCaptureStrategy:
+    def _get_default_capture_strategy() -> AbstractCaptureStrategy:
         return (CaptureStrategyBuilder()
                 .set_strategy_type("mss")
-                .set_option("fps", fps)
                 .build())
 
     @staticmethod
-    def _get_default_encoder_strategy(fps: int) -> AbstractEncoderStrategy:
+    def _get_default_encoder_strategy() -> AbstractEncoderStrategy:
         return (EncoderStrategyBuilder()
                 .set_strategy_type("default")
-                .set_option("fps", fps)
                 .build())
 
 
@@ -331,8 +323,8 @@ class ReadDecodePipeline(AbstractPipeline):
         _decoder_component (_DecoderComponent): The component responsible for decoding the video data.
     """
 
-    def __init__(self, fps: int, stream_packet_processor: PacketProcessor):
-        super().__init__(fps)
+    def __init__(self, stream_packet_processor: PacketProcessor):
+        super().__init__()
 
         self._socket_reader_component = _StreamReaderComponent(stream_packet_processor)
         self._decoder_component = _DecoderComponent(self._get_default_decoder_strategy())

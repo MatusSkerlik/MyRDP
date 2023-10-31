@@ -1,8 +1,8 @@
 import pygame
 from pygame import QUIT
 
-from connection import AutoReconnectClient
-from constants import HOST, PORT, FPS
+from connection import Connection
+from constants import *
 from lock import AutoLockingValue
 from pipeline import CaptureEncodeSendPipeline
 from pread import SocketDataReader
@@ -10,7 +10,7 @@ from processor import PacketProcessor, CommandProcessor
 from pwrite import SocketDataWriter
 
 
-class Client:
+class ObedientAgent:
     """
     A class representing a client in a video streaming application.
 
@@ -28,12 +28,14 @@ class Client:
         _connection (AutoReconnectClient): The connection object for the client.
         _socket_reader (SocketDataReader): The socket data reader object.
         _socket_writer (SocketDataWriter): The socket data writer object.
-        _pipeline (CaptureEncodeSendPipeline): The pipeline object for processing the video stream.
+        _capture_encode_send_pipeline (CaptureEncodeSendPipeline): The pipeline object for processing the video stream.
     """
 
     def __init__(self,
-                 host: str,
-                 port: int,
+                 local_ip: str,
+                 local_port: int,
+                 remote_ip: str,
+                 remote_port: int,
                  width: int,
                  height: int,
                  fps: int,
@@ -45,21 +47,19 @@ class Client:
         self._fps = fps
         self._running = False
 
-        self._connection = AutoReconnectClient(host, port)
+        self._connection = Connection(local_ip, local_port, remote_ip, remote_port)
         self._socket_reader = SocketDataReader(self._connection)
         self._socket_writer = SocketDataWriter(self._connection)
         self._packet_processor = PacketProcessor(self._socket_reader)
-        self._command_executor = CommandProcessor(self._packet_processor)
-        self._pipeline = CaptureEncodeSendPipeline(fps, self._socket_writer)
+        self._command_processor = CommandProcessor(self._packet_processor)
+        self._capture_encode_send_pipeline = CaptureEncodeSendPipeline(self._socket_writer)
 
     def run(self):
         if self._running:
             raise RuntimeError("The 'run' method can only be called once")
-        self._running = True
-        self._connection.start()
         self._packet_processor.start()
-        self._pipeline.start()
-        self._command_executor.start()
+        self._capture_encode_send_pipeline.start()
+        self._running = True
 
         pygame.init()
         screen = pygame.display.set_mode((self._width, self._height))
@@ -72,6 +72,8 @@ class Client:
                     self.stop()
                     break
 
+            self._command_processor.process()
+
             screen.fill((0, 0, 0))
             pygame.display.flip()
             clock.tick(self._fps)
@@ -79,16 +81,15 @@ class Client:
     pygame.quit()
 
     def stop(self):
-        self._running = False
-        self._connection.stop()
-        self._command_executor.stop()
         self._packet_processor.stop()
-        self._pipeline.stop()
+        self._capture_encode_send_pipeline.stop()
+        self._running = False
 
 
 if __name__ == "__main__":
     try:
-        client = Client(HOST, PORT, 200, 200, FPS)
+        client = ObedientAgent(OBEDIENT_AGENT_IP, OBEDIENT_AGENT_PORT, CONTROL_AGENT_IP, CONTROL_AGENT_PORT, 800, 600,
+                               FPS)
         client.run()
     except KeyboardInterrupt:
         pass

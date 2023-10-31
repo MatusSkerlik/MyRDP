@@ -1,56 +1,31 @@
-from typing import Tuple
-
 import pygame
+from typing import Tuple
 
 from bandwidth import BandwidthMonitor
 from command import MouseMoveNetworkCommand, MouseClickNetworkCommand, KeyboardEventNetworkCommand
-from connection import AutoReconnectServer
-from constants import HOST, PORT, FPS
+from connection import Connection
+from constants import *
 from enums import MouseButton, ButtonState
 from fps import FrameRateCalculator
 from keyboard import KEY_MAPPING
-from lock import AutoLockingValue
 from pipeline import ReadDecodePipeline
 from pread import SocketDataReader
 from processor import PacketProcessor
 from pwrite import SocketDataWriter
-from render import FlexboxLayout, TextLayout, ThreeDotsTextLayout
+from render import FlexboxLayout, TextLayout
 
 
-class Server:
-    """
-    A class representing a server in a video streaming application.
-
-    This class is responsible for handling server-side operations of a
-    video streaming application. It receives encoded frames from a client,
-    decodes the frames, and displays the video. It also handles user input events
-    for stopping the streaming process, as well as mouse and keyboard events.
-
-    Attributes:
-        _host (str): The server's host address.
-        _port (int): The server's port number.
-        _window_width (int): The width of the pygame window.
-        _window_height (int): The height of the pygame window.
-        _fps (int): The desired frame rate for receiving and displaying the video.
-        _caption (str): The caption of the pygame window.
-        _running (AutoLockingValue): A boolean flag to indicate if the server is running.
-        _connection (AutoReconnectServer): The connection object for the server.
-        _socket_reader (SocketDataReader): The socket data reader object.
-        _socket_writer (SocketDataWriter): The socket data writer object.
-        _bandwidth_monitor (BandwidthMonitor): A bandwidth monitor object to track bandwidth usage.
-        _bandwidth_state_machine (BandwidthStateMachine): A state machine to manage bandwidth states.
-        _read_decode_pipeline (ReadDecodePipeline): The pipeline object for processing the video stream.
-    """
+class ControlAgent:
 
     def __init__(self,
-                 host: str,
-                 port: int,
+                 local_ip: str,
+                 local_port: int,
+                 remote_ip: str,
+                 remote_port: int,
                  width: int,
                  height: int,
                  fps: int,
                  caption: str = "Server") -> None:
-        self._host = host
-        self._port = port
 
         self._window_width = width
         self._window_height = height
@@ -65,20 +40,19 @@ class Server:
         self._last_image = None
 
         self._running = False
-        self._connection = AutoReconnectServer(host, port)
+        self._connection = Connection(local_ip, local_port, remote_ip, remote_port)
         self._socket_reader = SocketDataReader(self._connection, buffer_size=4096)
         self._socket_writer = SocketDataWriter(self._connection)
         self._packet_processor = PacketProcessor(self._socket_reader)
-        self._read_decode_pipeline = ReadDecodePipeline(fps, self._packet_processor)
+        self._read_decode_pipeline = ReadDecodePipeline(self._packet_processor)
         self._bandwidth_monitor = BandwidthMonitor()
 
     def run(self) -> None:
         if self._running:
             raise RuntimeError("The 'run' method can only be called once")
-        self._running = True
-        self._connection.start()
-        self._read_decode_pipeline.start()
         self._packet_processor.start()
+        self._read_decode_pipeline.start()
+        self._running = True
 
         pygame.init()
         screen = pygame.display.set_mode((self._window_width, self._window_height + 20), pygame.RESIZABLE)
@@ -136,7 +110,6 @@ class Server:
 
             screen.fill((0, 0, 0))
 
-            # Receive data object
             data = self._read_decode_pipeline.pop_result()
 
             # If data from pipeline are available
@@ -148,19 +121,17 @@ class Server:
                 video_data, frames = data
                 width = video_data.get_width()
                 height = video_data.get_height()
-                data = video_data.get_data()
 
                 # Update client width and height
                 self._client_width = width
                 self._client_height = height
 
                 # Update minute bandwidth statistics
-                self._bandwidth_monitor.register_received_bytes(len(data))
+                self._bandwidth_monitor.register_received_bytes(len(video_data.get_data()))
 
                 # Render only last frame
                 frame = frames[-1]
                 img = pygame.image.frombuffer(frame, (width, height), "RGB")
-
                 # Calculate new width and height while preserving aspect ratio
                 x_offset, y_offset, new_width, new_height = self._calculate_ratio(width, height)
 
@@ -174,15 +145,12 @@ class Server:
 
                 # Rescale frame
                 self._last_image = pygame.transform.scale(img, (self._scaled_width, self._scaled_height))
+                screen.blit(self._last_image, (self._x_offset, self._y_offset))
+            elif self._last_image:
+                screen.blit(self._last_image, (self._x_offset, self._y_offset))
 
-            is_connected = self._connection.is_connected()
-            if is_connected:
-                # Render frame if there is connection
-                if self._last_image:
-                    screen.blit(self._last_image, (self._x_offset, self._y_offset))
-            else:
-                # Reset bandwidth monitor
-                self._bandwidth_monitor.reset()
+            # Reset bandwidth monitor
+            self._bandwidth_monitor.reset()
 
             # Render FPS, Pipeline FPS and bandwidth
             (FlexboxLayout()
@@ -203,10 +171,6 @@ class Server:
              .set_height(20)
              .set_align_items("center")
              .set_justify_content("space-between")
-             .set_background((46, 204, 113) if is_connected else (192, 57, 43))
-             .add_child(
-                TextLayout(f"Connected") if is_connected else
-                ThreeDotsTextLayout(f"Disconnected"))
              .add_child(TextLayout(f"Bandwidth '{bandwidth}'"))
              .set_text_size(24)
              .render(screen))
@@ -220,10 +184,9 @@ class Server:
         pygame.quit()
 
     def stop(self) -> None:
-        self._running = False
-        self._connection.stop()
         self._packet_processor.stop()
         self._read_decode_pipeline.stop()
+        self._running = False
 
     def _calculate_ratio(self, width: int, height: int) -> Tuple[int, int, int, int]:
         aspect_ratio = float(width) / float(height)
@@ -261,7 +224,8 @@ class Server:
 
 if __name__ == "__main__":
     try:
-        server = Server(HOST, PORT, 1366, 720, FPS)
+        server = ControlAgent(CONTROL_AGENT_IP, CONTROL_AGENT_PORT, OBEDIENT_AGENT_IP, OBEDIENT_AGENT_PORT, 1366, 720,
+                              FPS)
         server.run()
     except KeyboardInterrupt:
         pass

@@ -1,13 +1,14 @@
-import os
-import signal
-import subprocess
 import sys
 import time
 
+import os
+import signal
+import subprocess
+
 
 def main():
-    server_script = "server.py"
-    client_script = "client.py"
+    server_script = "control_agent.py"
+    client_script = "obedient_agent.py"
 
     server_process = subprocess.Popen([sys.executable, server_script])
     client_process = subprocess.Popen([sys.executable, client_script])

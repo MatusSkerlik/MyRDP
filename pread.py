@@ -1,6 +1,7 @@
 import io
+import select
 import struct
-from typing import Tuple
+from typing import Tuple, Optional
 
 from connection import Connection
 from dao import MouseMoveData, AbstractDataObject, VideoData, MouseClickData, KeyboardData
@@ -124,14 +125,21 @@ class SocketDataReader(BytesReader):
             self.buffer.seek(sync_packet_position + len(sync_packet_bytes))
             return True
         else:
+            self.buffer.seek(len(content))
             return False
 
-    def read_packet(self) -> Tuple[PacketType, AbstractDataObject]:
+    def read_packet(self, timeout: float = 0) -> Optional[Tuple[PacketType, AbstractDataObject]]:
+        ready_to_read, _, _ = select.select([self._connection.socket], [], [], timeout)
+
+        if self._connection.socket not in ready_to_read:
+            return None
+
         while True:
             try:
                 packet_type = PacketType(self.read_byte())
             except ValueError:
                 # Synchronization error
+                print("Sync error")
                 while not self._seek_to_end_of_sync_packet():
                     self._flush_read_data()
                     self._ensure_data(self._buffer_size)
@@ -143,13 +151,15 @@ class SocketDataReader(BytesReader):
                     height = self.read_int()
                     frame_packet = self.read_bytes()
 
-                    # Seek to the start of frame packet, -4 represents byte array size
+                    # frame packet inside packet (implemented so video data packet can have its own format in the future)
                     self.buffer.seek(self.buffer.tell() - len(frame_packet))
 
                     encoder_type = self.read_int()
                     frame_type = self.read_int()
                     encoded_frame = self.read_bytes()
 
+                    print(
+                        f"Video data, width={width}, height={height}, encoder_type={encoder_type}, frame_type={frame_type}")
                     return packet_type, VideoData(width, height, encoder_type, frame_type, encoded_frame)
 
                 elif packet_type == PacketType.MOUSE_MOVE:
