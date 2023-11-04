@@ -1,19 +1,24 @@
-import mss
 from abc import ABC, abstractmethod
-from typing import Optional, Any, Dict, Union
+from dataclasses import dataclass
+from typing import Optional, Any, Dict
+
+import mss
+
+
+@dataclass
+class Screenshot:
+    width: int
+    height: int
+    b_array: bytes
+
+    @property
+    def size(self):
+        return self.width, self.height
 
 
 class AbstractCaptureStrategy(ABC):
     @abstractmethod
-    def capture_screen(self) -> bytes:
-        pass
-
-    @abstractmethod
-    def get_monitor_width(self) -> int:
-        pass
-
-    @abstractmethod
-    def get_monitor_height(self) -> int:
+    def capture_screen(self) -> Screenshot:
         pass
 
 
@@ -29,13 +34,7 @@ class MSSCaptureStrategy(AbstractCaptureStrategy):
     def __init__(self):
         self._sct = mss.mss()
 
-    def get_monitor_width(self) -> int:
-        return self._sct.monitors[1].get("width")
-
-    def get_monitor_height(self) -> int:
-        return self._sct.monitors[1].get("height")
-
-    def capture_screen(self) -> Union[None, bytes]:
+    def capture_screen(self) -> Optional[Screenshot]:
         # sleep for the required time to match fps
         # self._frame_rate_limiter.tick()
 
@@ -44,13 +43,17 @@ class MSSCaptureStrategy(AbstractCaptureStrategy):
 
         # Capture the screen
         try:
-            screen_shot = self._sct.grab(monitor)
+            screenshot = self._sct.grab(monitor)
         except mss.exception.ScreenShotError as e:
             print(e)
             return None
 
         # Convert the resized image to a bytes and return
-        return screen_shot.rgb
+        return Screenshot(
+            screenshot.width,
+            screenshot.height,
+            screenshot.rgb
+        )
 
 
 class CaptureStrategyBuilder:

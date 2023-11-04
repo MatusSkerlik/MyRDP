@@ -1,4 +1,5 @@
 import queue
+import time
 from queue import Queue
 from typing import Dict, Union, Type
 
@@ -28,10 +29,12 @@ class PacketProcessor(Task):
 
     def run(self):
         while self.running.getv():
-            data = self._socket_data_reader.read_packet(timeout=1 / 120)
+            data = self._socket_data_reader.read_packet(timeout=1 / 100)
             if data:
                 packet_type, data_object = data
                 self._packet_queues.get(packet_type).put_nowait(data_object)
+            else:
+                time.sleep(0)
 
 
 class CommandProcessor:

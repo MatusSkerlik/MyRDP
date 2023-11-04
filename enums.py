@@ -5,6 +5,7 @@ class PacketType(IntEnum):
     """
     Enumeration representing different packet types for the screen capture application.
     """
+    SYNC = 0
     VIDEO_DATA = 1
     MOUSE_CLICK = 2
     MOUSE_MOVE = 3

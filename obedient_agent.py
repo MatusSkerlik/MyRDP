@@ -8,6 +8,7 @@ from pipeline import CaptureEncodeSendPipeline
 from pread import SocketDataReader
 from processor import PacketProcessor, CommandProcessor
 from pwrite import SocketDataWriter
+from render import FlexboxLayout, TextLayout
 
 
 class ObedientAgent:
@@ -38,6 +39,8 @@ class ObedientAgent:
                  remote_port: int,
                  width: int,
                  height: int,
+                 transmission_width: int,  # TODO protocol negotiated
+                 transmission_height: int,  # TODO protocol negotiated
                  fps: int,
                  title: str = "Client"):
         self._title = title
@@ -52,13 +55,13 @@ class ObedientAgent:
         self._socket_writer = SocketDataWriter(self._connection)
         self._packet_processor = PacketProcessor(self._socket_reader)
         self._command_processor = CommandProcessor(self._packet_processor)
-        self._capture_encode_send_pipeline = CaptureEncodeSendPipeline(self._socket_writer)
+        self._capture_encode_send_pipeline = CaptureEncodeSendPipeline(transmission_width, transmission_height,
+                                                                       self._socket_writer)
 
     def run(self):
         if self._running:
             raise RuntimeError("The 'run' method can only be called once")
         self._packet_processor.start()
-        self._capture_encode_send_pipeline.start()
         self._running = True
 
         pygame.init()
@@ -73,8 +76,18 @@ class ObedientAgent:
                     break
 
             self._command_processor.process()
+            self._capture_encode_send_pipeline.run()
 
             screen.fill((0, 0, 0))
+
+            (FlexboxLayout()
+             .set_mode("column")
+             .set_align_items("start")
+             .set_background((0, 0, 0))
+             .add_child(TextLayout(f"FPS: {clock.get_fps():.2f}"))
+             .set_text_size(24)
+             .render(screen))
+
             pygame.display.flip()
             clock.tick(self._fps)
 
@@ -82,14 +95,13 @@ class ObedientAgent:
 
     def stop(self):
         self._packet_processor.stop()
-        self._capture_encode_send_pipeline.stop()
         self._running = False
 
 
 if __name__ == "__main__":
     try:
-        client = ObedientAgent(OBEDIENT_AGENT_IP, OBEDIENT_AGENT_PORT, CONTROL_AGENT_IP, CONTROL_AGENT_PORT, 800, 600,
-                               FPS)
+        client = ObedientAgent(OBEDIENT_AGENT_IP, OBEDIENT_AGENT_PORT, CONTROL_AGENT_IP, CONTROL_AGENT_PORT,
+                               200, 200, 800, 600, FPS)
         client.run()
     except KeyboardInterrupt:
         pass

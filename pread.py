@@ -4,6 +4,7 @@ import struct
 from typing import Tuple, Optional
 
 from connection import Connection
+from constants import SYNC_SEQUENCE
 from dao import MouseMoveData, AbstractDataObject, VideoData, MouseClickData, KeyboardData
 from enums import PacketType, ButtonState, MouseButton
 
@@ -45,9 +46,9 @@ class BytesReader:
 
 
 class SocketDataReader(BytesReader):
-    def __init__(self, connection: Connection, buffer_size: int = 256):
+    def __init__(self, connection: Connection):
         super().__init__(b"")  # Initialize BytesReader with empty bytes
-        self._buffer_size = buffer_size
+        self._buffer_size = 1024 * 1024
         self._connection = connection
 
     def read_int(self) -> int:
@@ -97,7 +98,6 @@ class SocketDataReader(BytesReader):
         Raises a ConnectionError if the connection is closed.
         """
         data = self._connection.read(self._buffer_size)
-
         current_pos = self.buffer.tell()
         self.buffer.seek(0, io.SEEK_END)
         self.buffer.write(data)
@@ -108,21 +108,16 @@ class SocketDataReader(BytesReader):
         Searches for the synchronization packet bytes in the buffer and seeks
         to the position just after the end of the synchronization packet if found.
 
-        The synchronization packet bytes are represented by the byte sequence
-        '\x00\x01\x00\x01\x00\x01\x00\x01'.
-
         Returns:
             bool: True if the synchronization packet bytes are found in the buffer,
                   False otherwise.
         """
 
-        sync_packet_bytes = b'\x00\x01\x00\x01\x00\x01\x00\x01'
         content = self.buffer.getvalue()
-
-        sync_packet_position = content.find(sync_packet_bytes)
+        sync_packet_position = content.find(SYNC_SEQUENCE)
 
         if sync_packet_position != -1:
-            self.buffer.seek(sync_packet_position + len(sync_packet_bytes))
+            self.buffer.seek(sync_packet_position + len(SYNC_SEQUENCE))
             return True
         else:
             self.buffer.seek(len(content))
@@ -139,29 +134,30 @@ class SocketDataReader(BytesReader):
                 packet_type = PacketType(self.read_byte())
             except ValueError:
                 # Synchronization error
-                print("Sync error")
                 while not self._seek_to_end_of_sync_packet():
                     self._flush_read_data()
                     self._ensure_data(self._buffer_size)
                 continue
 
             try:
-                if packet_type == PacketType.VIDEO_DATA:
+                if packet_type == PacketType.SYNC:
+                    # synchronized, read next packets
+                    _ = self.read_bytes()
+                    continue
+                elif packet_type == PacketType.VIDEO_DATA:
                     width = self.read_int()
                     height = self.read_int()
                     frame_packet = self.read_bytes()
 
-                    # frame packet inside packet (implemented so video data packet can have its own format in the future)
+                    # Frame packet inside packet
+                    # (implemented so video data packet can have its own format in the future)
                     self.buffer.seek(self.buffer.tell() - len(frame_packet))
 
                     encoder_type = self.read_int()
                     frame_type = self.read_int()
                     encoded_frame = self.read_bytes()
 
-                    print(
-                        f"Video data, width={width}, height={height}, encoder_type={encoder_type}, frame_type={frame_type}")
                     return packet_type, VideoData(width, height, encoder_type, frame_type, encoded_frame)
-
                 elif packet_type == PacketType.MOUSE_MOVE:
                     x = self.read_int()
                     y = self.read_int()

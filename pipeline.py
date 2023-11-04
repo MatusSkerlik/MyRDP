@@ -1,12 +1,13 @@
 import queue
+import time
 from abc import ABC, abstractmethod
 from typing import Union, List, Any
 
-from capture import AbstractCaptureStrategy, CaptureStrategyBuilder
+from capture_stragety import AbstractCaptureStrategy, CaptureStrategyBuilder
 from connection import NoConnection
 from dao import VideoContainerDataPacketFactory
-from decode import DecoderStrategyBuilder, AbstractDecoderStrategy
-from encode import AbstractEncoderStrategy, EncoderStrategyBuilder
+from decode_strategy import DecoderStrategyBuilder, AbstractDecoderStrategy
+from encode_strategy import AbstractEncoderStrategy, EncoderStrategyBuilder
 from enums import PacketType
 from lock import AutoLockingValue
 from processor import PacketProcessor
@@ -38,9 +39,12 @@ class _CaptureComponent(Component):
             to capture the screen.
     """
 
-    def __init__(self, capture_strategy: AbstractCaptureStrategy, ):
+    def __init__(self, width: int,
+                 height: int, capture_strategy: AbstractCaptureStrategy, ):
         super().__init__()
         self._capture_strategy = capture_strategy
+        self.target_width = width
+        self.target_height = height
 
     def __str__(self):
         return f"CaptureComponent()"
@@ -86,9 +90,9 @@ class _EncoderComponent(Component):
     def set_encoder_strategy(self, encoder_strategy: AbstractEncoderStrategy):
         self._encoder_strategy = encoder_strategy
 
-    def run(self, frame):
-        if frame:
-            return self._encoder_strategy.encode_frame(self._width, self._height, frame)
+    def run(self, screenshot):
+        if screenshot:
+            return self._encoder_strategy.encode_frame(self._width, self._height, screenshot)
         return None
 
 
@@ -124,7 +128,6 @@ class _StreamSenderComponent(Component):
         return f"SocketWriterComponent(width={self._width}, height={self._height})"
 
     def run(self, encoded_frame) -> None:
-        print(f"Sending video data")
         packet = VideoContainerDataPacketFactory.create_packet(self._width, self._height, encoded_frame)
         try:
             self._socket_writer.write_packet(packet)
@@ -138,7 +141,7 @@ class _StreamSenderComponent(Component):
             pass
 
 
-class AbstractPipeline(Task, ABC):
+class AbstractPipeline(ABC):
     """
     An abstract class representing a pipeline of processing components.
 
@@ -150,13 +153,26 @@ class AbstractPipeline(Task, ABC):
         _threads (Union[None, List[threading.Thread]]): A list of threads used to run the components in the pipeline.
     """
 
-    def __init__(self):
-        super().__init__()
-        self._queue_of_results = queue.Queue()
-
     @abstractmethod
     def get_components(self) -> List[Component]:
         pass
+
+    def run(self) -> Any:
+        last_result = None
+        for component in self.get_components():
+            component_result = component.run(last_result)
+            if component_result is None:
+                return None
+            else:
+                last_result = component_result
+        return last_result
+
+
+class AbstractLoopedPipeline(AbstractPipeline, Task, ABC):
+
+    def __init__(self):
+        super().__init__()
+        self._queue_of_results = queue.Queue()
 
     def pop_result(self) -> Any:
         try:
@@ -166,17 +182,11 @@ class AbstractPipeline(Task, ABC):
 
     def run(self):
         while self.running.getv():
-            last_result = None
-            pipe_passed = True
-            for component in self.get_components():
-                component_result = component.run(last_result)
-                if component_result is None:
-                    pipe_passed = False
-                    break
-                else:
-                    last_result = component_result
-            if pipe_passed:
-                self._queue_of_results.put(last_result)
+            result = AbstractPipeline.run(self)
+            if result:
+                # Pipeline successful
+                self._queue_of_results.put_nowait(result)
+            time.sleep(0)
 
 
 class CaptureEncodeSendPipeline(AbstractPipeline):
@@ -196,29 +206,29 @@ class CaptureEncodeSendPipeline(AbstractPipeline):
         _sender_component (_StreamSenderComponent): The component responsible for sending the encoded video data.
     """
 
-    def __init__(self, socket_writer: SocketDataWriter):
+    def __init__(self, target_width: int,
+                 target_height: int,
+                 socket_writer: SocketDataWriter):
         super().__init__()
 
-        self._capture_width = None
-        self._capture_height = None
+        self.target_width = target_width
+        self.target_height = target_height
 
         # pipeline initialization
         capture_strategy = CaptureEncodeSendPipeline._get_default_capture_strategy()
         self._capture_component = _CaptureComponent(
+            self.target_width,
+            self.target_height,
             capture_strategy,
         )
-        self._capture_width = capture_strategy.get_monitor_width()
-        self._capture_height = capture_strategy.get_monitor_height()
-
         self._encoder_component = _EncoderComponent(
-            self._capture_width,
-            self._capture_height,
+            self.target_width,
+            self.target_height,
             CaptureEncodeSendPipeline._get_default_encoder_strategy(),
         )
-
         self._sender_component = _StreamSenderComponent(
-            self._capture_width,
-            self._capture_height,
+            self.target_width,
+            self.target_height,
             socket_writer
         )
 
@@ -310,7 +320,7 @@ class _DecoderComponent(Component):
         return None
 
 
-class ReadDecodePipeline(AbstractPipeline):
+class ReadDecodePipeline(AbstractLoopedPipeline):
     """
     A pipeline for reading and decoding video data from a socket connection.
 

@@ -12,7 +12,7 @@ class NoConnection(Exception):
 
 
 class Connection:
-    MAX_PACKET_SIZE = 4096
+    MAX_PACKET_SIZE = 8192
 
     def __init__(self, local_ip: str, local_port: int, remote_ip: str, remote_port: int) -> None:
         super().__init__()

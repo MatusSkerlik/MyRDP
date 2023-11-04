@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+from constants import SYNC_SEQUENCE
 from enums import PacketType, MouseButton, ButtonState
 from packet import Packet
 
@@ -119,15 +120,8 @@ class SynchronizationPacketFactory(AbstractPacketFactory):
         Creates a new synchronization packet.
 
         The packet contains the synchronization byte sequence
-        '\x00\x01\x00\x01\x00\x01\x00\x01'.
         """
         packet = Packet()
-        packet.add_byte(0x00)
-        packet.add_byte(0x01)
-        packet.add_byte(0x00)
-        packet.add_byte(0x01)
-        packet.add_byte(0x00)
-        packet.add_byte(0x01)
-        packet.add_byte(0x00)
-        packet.add_byte(0x01)
+        packet.add_byte(PacketType.SYNC)
+        packet.add_bytes(SYNC_SEQUENCE)
         return packet

@@ -1,5 +1,7 @@
-import pygame
+import io
 from typing import Tuple
+
+import pygame
 
 from bandwidth import BandwidthMonitor
 from command import MouseMoveNetworkCommand, MouseClickNetworkCommand, KeyboardEventNetworkCommand
@@ -41,7 +43,7 @@ class ControlAgent:
 
         self._running = False
         self._connection = Connection(local_ip, local_port, remote_ip, remote_port)
-        self._socket_reader = SocketDataReader(self._connection, buffer_size=4096)
+        self._socket_reader = SocketDataReader(self._connection)
         self._socket_writer = SocketDataWriter(self._connection)
         self._packet_processor = PacketProcessor(self._socket_reader)
         self._read_decode_pipeline = ReadDecodePipeline(self._packet_processor)
@@ -131,26 +133,28 @@ class ControlAgent:
 
                 # Render only last frame
                 frame = frames[-1]
-                img = pygame.image.frombuffer(frame, (width, height), "RGB")
-                # Calculate new width and height while preserving aspect ratio
-                x_offset, y_offset, new_width, new_height = self._calculate_ratio(width, height)
+                try:
+                    img = pygame.image.load(io.BytesIO(frame))
+                    # Calculate new width and height while preserving aspect ratio
+                    x_offset, y_offset, new_width, new_height = self._calculate_ratio(width, height)
 
-                # Update offset
-                self._x_offset = x_offset
-                self._y_offset = y_offset
+                    # Update offset
+                    self._x_offset = x_offset
+                    self._y_offset = y_offset
 
-                # Update scaled width & height
-                self._scaled_width = new_width
-                self._scaled_height = new_height
+                    # Update scaled width & height
+                    self._scaled_width = new_width
+                    self._scaled_height = new_height
 
-                # Rescale frame
-                self._last_image = pygame.transform.scale(img, (self._scaled_width, self._scaled_height))
-                screen.blit(self._last_image, (self._x_offset, self._y_offset))
+                    # Rescale frame
+                    self._last_image = pygame.transform.scale(img, (self._scaled_width, self._scaled_height))
+                    screen.blit(self._last_image, (self._x_offset, self._y_offset))
+                except Exception as e:
+                    print(e)
+                    if self._last_image:
+                        screen.blit(self._last_image, (self._x_offset, self._y_offset))
             elif self._last_image:
                 screen.blit(self._last_image, (self._x_offset, self._y_offset))
-
-            # Reset bandwidth monitor
-            self._bandwidth_monitor.reset()
 
             # Render FPS, Pipeline FPS and bandwidth
             (FlexboxLayout()

@@ -1,6 +1,4 @@
 from abc import ABC, abstractmethod
-import numpy as np
-from abc import ABC, abstractmethod
 from enum import IntEnum
 from typing import List, Optional, Any, Dict
 
@@ -21,14 +19,12 @@ class DefaultDecoder:
     def __str__(self):
         return f"DefaultDecoder()"
 
-    def decode_packet(self, video_data: VideoData) -> List[np.ndarray]:
+    def decode_packet(self, video_data: VideoData) -> List[bytes]:
         frame_type = video_data.get_frame_type()
         data = video_data.get_data()
 
-        nframe = np.frombuffer(data, dtype=np.uint8)
-        print(nframe)
         if frame_type == DefaultDecoder.FrameType.FULL_FRAME:
-            return [nframe]
+            return [data]
         else:
             raise RuntimeError("invalid frame type or not previous frame available")
 
